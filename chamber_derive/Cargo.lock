@@ -3,13 +3,6 @@
 version = 3
 
 [[package]]
-name = "chamber"
-version = "0.1.0"
-dependencies = [
- "chamber_derive",
-]
-
-[[package]]
 name = "chamber_derive"
 version = "0.1.0"
 dependencies = [

@@ -3,6 +3,13 @@ use std::collections::HashSet;
 
 const TOMBSTONE: IdSize = IdSize::MAX;
 
+/// Base trait for the `components` world field.
+pub trait Components {
+    /// despawn all the entity's components
+    fn despawn(&mut self, entity: Entity);
+}
+
+/// Component storage based on a sparse set data structure
 #[derive(Default)]
 pub struct ComponentStorage<T> {
     dense: Vec<Entity>,
@@ -180,5 +187,23 @@ mod tests {
                 assert_eq!(storage.get(entity), Some(&(10 * i)));
             }
         }
+    }
+
+    #[test]
+    fn get_wrong_version() {
+        let mut storage = ComponentStorage::default();
+        let entity = Entity { id: 0, version: 1 };
+        storage.insert(entity, "VALUE");
+
+        assert_eq!(storage.get(Entity { id: 0, version: 0 }), None);
+    }
+
+    #[test]
+    fn get_wrong_id() {
+        let mut storage = ComponentStorage::default();
+        let entity = Entity { id: 3, version: 1 };
+        storage.insert(entity, "VALUE");
+
+        assert_eq!(storage.get(Entity { id: 0, version: 1 }), None);
     }
 }
