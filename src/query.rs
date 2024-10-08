@@ -181,4 +181,56 @@ mod tests {
         assert_eq!(*w.components.health.get(b).unwrap(), 18);
         assert_eq!(w.components.name.get(b).unwrap(), "@Seventeen");
     }
+
+    #[test]
+    fn example() {
+        #[derive(Components, Default)]
+        struct GameComponents {
+            pub health: ComponentStorage<u32>,
+            pub name: ComponentStorage<String>,
+            pub player: ComponentStorage<()>, // marker component
+            pub poison: ComponentStorage<()>,
+            pub strength: ComponentStorage<u32>,
+        }
+
+        type World = WorldStorage<GameComponents>;
+
+        let mut world = World::default();
+
+        let player = world.spawn();
+        world.components.health.insert(player, 5);
+        world.components.name.insert(player, "Player".to_string());
+        world.components.player.insert(player, ());
+        world.components.poison.insert(player, ());
+        world.components.strength.insert(player, 3);
+
+        let rat = world.spawn();
+        world.components.health.insert(rat, 2);
+        world.components.name.insert(rat, "Rat".to_string());
+        world.components.strength.insert(rat, 1);
+
+        let serpent = world.spawn();
+        world.components.health.insert(serpent, 3);
+        world.components.name.insert(serpent, "Serpent".to_string());
+        world.components.poison.insert(serpent, ());
+        world.components.strength.insert(serpent, 2);
+
+        // find matching entities, returns HashSet<Entity>
+        let npcs = query!(world, Without(player), With(health));
+        assert_eq!(npcs.len(), 2);
+
+        // apply poison
+        query_execute_mut!(world, With(health, poison), |h: &mut u32, _| {
+            *h = h.saturating_sub(1);
+        });
+
+        assert_eq!(world.components.health.get(player), Some(&4));
+        assert_eq!(world.components.health.get(rat), Some(&2));
+        assert_eq!(world.components.health.get(serpent), Some(&2));
+
+        // heal player
+        let _ = world.components.poison.remove(player);
+        let poisoned = query!(world, With(poison));
+        assert_eq!(poisoned.len(), 1);
+    }
 }

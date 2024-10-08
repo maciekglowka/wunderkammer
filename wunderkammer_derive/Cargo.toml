@@ -1,5 +1,5 @@
 [package]
-name = "chamber_derive"
+name = "wunderkammer_derive"
 version = "0.1.0"
 edition = "2021"
 

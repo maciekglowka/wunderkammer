@@ -9,7 +9,7 @@ pub struct Entity {
 /// EntityStorage responsible for spawning and despawning of the entities.
 /// Entity id's are recycled internally and versioned to avoid dead entitiy usage.
 /// ```rust
-/// use chamber::prelude::*;
+/// use wunderkammer::prelude::*;
 /// let mut storage = EntityStorage::default();
 /// let a = storage.spawn();
 /// let b = storage.spawn();

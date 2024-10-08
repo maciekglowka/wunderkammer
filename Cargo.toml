@@ -1,7 +1,7 @@
 [package]
-name = "chamber"
+name = "wunderkammer"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-chamber_derive = { path = "chamber_derive" }
+wunderkammer_derive = { path = "wunderkammer_derive" }
