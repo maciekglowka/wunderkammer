@@ -1,12 +1,13 @@
-use crate::components::Components;
+use crate::components::ComponentSet;
 use crate::entity::{Entity, EntityStorage};
 
 #[derive(Default)]
-pub struct WorldStorage<C> {
+pub struct WorldStorage<C, R> {
     entities: EntityStorage,
     pub components: C,
+    pub resources: R,
 }
-impl<C: Components> WorldStorage<C> {
+impl<C: ComponentSet, R: Default> WorldStorage<C, R> {
     pub fn spawn(&mut self) -> Entity {
         self.entities.spawn()
     }

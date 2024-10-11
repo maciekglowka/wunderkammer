@@ -4,7 +4,7 @@ use std::collections::HashSet;
 const TOMBSTONE: IdSize = IdSize::MAX;
 
 /// Base trait for the `components` world field.
-pub trait Components {
+pub trait ComponentSet {
     /// despawn all the entity's components
     fn despawn(&mut self, entity: Entity);
 }

@@ -7,8 +7,8 @@ pub(crate) mod world;
 pub mod prelude {
     use super::*;
     pub use super::{query, query_execute, query_execute_mut};
-    pub use components::{ComponentStorage, Components};
+    pub use components::{ComponentSet, ComponentStorage};
     pub use entity::{Entity, EntityStorage};
     pub use world::WorldStorage;
-    pub use wunderkammer_derive::Components;
+    pub use wunderkammer_derive::ComponentSet;
 }

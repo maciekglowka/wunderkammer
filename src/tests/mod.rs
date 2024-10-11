@@ -4,7 +4,7 @@ mod test_derive {
 
     #[test]
     fn derive() {
-        #[derive(Components, Default)]
+        #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
             pub name: ComponentStorage<String>,

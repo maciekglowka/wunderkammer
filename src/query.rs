@@ -55,12 +55,14 @@ mod tests {
 
     #[test]
     fn query_single() {
-        #[derive(Components, Default)]
+        #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
             pub name: ComponentStorage<String>,
         }
-        let mut w = WorldStorage::<C>::default();
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
         let entity = w.spawn();
 
         w.components.health.insert(entity, 15);
@@ -73,12 +75,14 @@ mod tests {
 
     #[test]
     fn query_many() {
-        #[derive(Components, Default)]
+        #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
             pub name: ComponentStorage<String>,
         }
-        let mut w = WorldStorage::<C>::default();
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
         let a = w.spawn();
         let b = w.spawn();
         let c = w.spawn();
@@ -99,12 +103,14 @@ mod tests {
 
     #[test]
     fn query_without() {
-        #[derive(Components, Default)]
+        #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
             pub name: ComponentStorage<String>,
         }
-        let mut w = WorldStorage::<C>::default();
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
         let a = w.spawn();
         let b = w.spawn();
         let c = w.spawn();
@@ -124,12 +130,14 @@ mod tests {
 
     #[test]
     fn query_execute() {
-        #[derive(Components, Default)]
+        #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
             pub name: ComponentStorage<String>,
         }
-        let mut w = WorldStorage::<C>::default();
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
         let a = w.spawn();
         let b = w.spawn();
         let c = w.spawn();
@@ -156,12 +164,14 @@ mod tests {
 
     #[test]
     fn query_execute_mut() {
-        #[derive(Components, Default)]
+        #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
             pub name: ComponentStorage<String>,
         }
-        let mut w = WorldStorage::<C>::default();
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
         let a = w.spawn();
         let b = w.spawn();
 
@@ -184,16 +194,18 @@ mod tests {
 
     #[test]
     fn example() {
-        #[derive(Components, Default)]
-        struct GameComponents {
+        #[derive(ComponentSet, Default)]
+        struct Components {
             pub health: ComponentStorage<u32>,
             pub name: ComponentStorage<String>,
             pub player: ComponentStorage<()>, // marker component
             pub poison: ComponentStorage<()>,
             pub strength: ComponentStorage<u32>,
         }
+        #[derive(Default)]
+        struct R;
 
-        type World = WorldStorage<GameComponents>;
+        type World = WorldStorage<Components, R>;
 
         let mut world = World::default();
 
