@@ -11,7 +11,7 @@ macro_rules! query {
                 .expect("This iterator shoud never be empty!")
         }
     };
-    ($world:expr, Without($($without:ident),+), With($($component:ident),+)) => {
+    ($world:expr, Without($($without:ident)+), With($($component:ident),+)) => {
         {
             let with = [
                 $($world.components.$component.entities()), +
@@ -32,20 +32,31 @@ macro_rules! query {
 #[macro_export]
 macro_rules! query_execute {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
-        let entities = query!($world, $(Without($($without),+))? With($($component),+));
+        let entities = query!($world, $(Without($($without),+),)? With($($component),+));
         // after querying should be always safe to unwrap
         entities.iter()
-            .for_each(|e| $f( $($world.components.$component.get(*e).unwrap()),+ ))
+            .for_each(|e| $f( *e, $($world.components.$component.get(*e).unwrap()),+ ))
     }};
 }
 
 #[macro_export]
 macro_rules! query_execute_mut {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
-        let entities = query!($world, $(Without($($without),+))? With($($component),+));
+        let entities = query!($world, $(Without($($without),+),)? With($($component),+));
         // after querying should be always safe to unwrap
         entities.iter()
-            .for_each(|e| $f( $($world.components.$component.get_mut(*e).unwrap()),+ ))
+            .for_each(|e| $f( *e, $($world.components.$component.get_mut(*e).unwrap()),+ ))
+    }};
+}
+
+#[macro_export]
+macro_rules! query_collect {
+    ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
+        let entities = query!($world, $(Without($($without),+),)? With($($component),+));
+        // after querying should be always safe to unwrap
+        entities.iter()
+            .map(|e| $f( *e, $($world.components.$component.get(*e).unwrap()),+ ))
+            .collect::<Vec<_>>()
     }};
 }
 
@@ -151,7 +162,7 @@ mod tests {
         w.components.name.insert(c, "Seventeen".to_string());
 
         let mut v = Vec::new();
-        query_execute!(w, With(health, name), |h, n| { v.push((h, n)) });
+        query_execute!(w, With(health, name), |_, h, n| { v.push((h, n)) });
         assert_eq!(v.len(), 2);
 
         // the order is not deterministic due to HashSet usage
@@ -160,6 +171,34 @@ mod tests {
         assert_eq!(v[0].1, "Fifteen");
         assert_eq!(*v[1].0, 17);
         assert_eq!(v[1].1, "Seventeen");
+    }
+
+    #[test]
+    fn query_execute_without() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+            pub name: ComponentStorage<String>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+        let c = w.spawn();
+
+        w.components.health.insert(a, 15);
+        w.components.name.insert(a, "Fifteen".to_string());
+
+        w.components.health.insert(b, 16);
+
+        w.components.health.insert(c, 17);
+        w.components.name.insert(c, "Seventeen".to_string());
+
+        let mut v = Vec::new();
+        query_execute!(w, Without(name), With(health), |_, h| { v.push(h) });
+        assert_eq!(v.len(), 1);
+        assert_eq!(*v[0], 16);
     }
 
     #[test]
@@ -181,7 +220,7 @@ mod tests {
         w.components.health.insert(b, 17);
         w.components.name.insert(b, "Seventeen".to_string());
 
-        query_execute_mut!(w, With(health, name), |h: &mut u32, n: &mut String| {
+        query_execute_mut!(w, With(health, name), |_, h: &mut u32, n: &mut String| {
             *h += 1;
             n.insert(0, '@');
         });
@@ -190,6 +229,111 @@ mod tests {
         assert_eq!(w.components.name.get(a).unwrap(), "@Fifteen");
         assert_eq!(*w.components.health.get(b).unwrap(), 18);
         assert_eq!(w.components.name.get(b).unwrap(), "@Seventeen");
+    }
+
+    #[test]
+    fn query_execute_mut_without() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+            pub name: ComponentStorage<String>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+
+        w.components.health.insert(a, 15);
+
+        w.components.health.insert(b, 17);
+        w.components.name.insert(b, "Seventeen".to_string());
+
+        query_execute_mut!(w, Without(name), With(health), |_, h: &mut u32| {
+            *h += 1;
+        });
+
+        assert_eq!(*w.components.health.get(a).unwrap(), 16);
+        assert_eq!(*w.components.health.get(b).unwrap(), 17);
+    }
+
+    #[test]
+    fn query_collect() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+            pub strength: ComponentStorage<u32>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+        let c = w.spawn();
+
+        w.components.health.insert(a, 15);
+        w.components.health.insert(c, 17);
+
+        w.components.strength.insert(a, 1);
+        w.components.strength.insert(b, 1);
+        w.components.strength.insert(c, 1);
+
+        let v = query_collect!(w, With(health, strength), |_, h, s| h + s);
+        assert_eq!(v.len(), 2);
+        assert_eq!(v.iter().sum::<u32>(), 34);
+    }
+
+    #[test]
+    fn query_collect_without() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+            pub strength: ComponentStorage<u32>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+        let c = w.spawn();
+
+        w.components.health.insert(a, 15);
+        w.components.health.insert(c, 17);
+
+        w.components.strength.insert(a, 1);
+        w.components.strength.insert(b, 2);
+        w.components.strength.insert(c, 1);
+
+        let v = query_collect!(w, Without(health), With(strength), |_, s| s);
+        assert_eq!(v.len(), 1);
+        assert_eq!(*v[0], 2);
+    }
+
+    #[test]
+    fn query_collect_entity() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+            pub strength: ComponentStorage<u32>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+        let c = w.spawn();
+
+        w.components.health.insert(a, 15);
+        w.components.health.insert(c, 17);
+
+        w.components.strength.insert(a, 1);
+        w.components.strength.insert(b, 1);
+        w.components.strength.insert(c, 1);
+
+        let v = query_collect!(w, With(health, strength), |e, _, _| e);
+        assert_eq!(v.len(), 2);
+        assert_eq!(v.contains(&a), true);
+        assert_eq!(v.contains(&c), true);
     }
 
     #[test]
@@ -202,10 +346,13 @@ mod tests {
             pub poison: ComponentStorage<()>,
             pub strength: ComponentStorage<u32>,
         }
-        #[derive(Default)]
-        struct R;
 
-        type World = WorldStorage<Components, R>;
+        #[derive(Default)]
+        struct Resources {
+            current_level: u32,
+        }
+
+        type World = WorldStorage<Components, Resources>;
 
         let mut world = World::default();
 
@@ -232,7 +379,7 @@ mod tests {
         assert_eq!(npcs.len(), 2);
 
         // apply poison
-        query_execute_mut!(world, With(health, poison), |h: &mut u32, _| {
+        query_execute_mut!(world, With(health, poison), |_, h: &mut u32, _| {
             *h = h.saturating_sub(1);
         });
 
@@ -244,5 +391,8 @@ mod tests {
         let _ = world.components.poison.remove(player);
         let poisoned = query!(world, With(poison));
         assert_eq!(poisoned.len(), 1);
+
+        // use resource
+        world.resources.current_level += 1;
     }
 }

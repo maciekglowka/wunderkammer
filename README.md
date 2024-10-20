@@ -11,8 +11,8 @@ The internal component storage is based on sparse set data structures, rather th
 ```rust
 use wunderkammer::prelude::*;
 
-#[derive(Components, Default)]
-struct GameComponents {
+#[derive(ComponentSet, Default)]
+struct Components {
     pub health: ComponentStorage<u32>,
     pub name: ComponentStorage<String>,
     pub player: ComponentStorage<()>, // marker component
@@ -20,7 +20,12 @@ struct GameComponents {
     pub strength: ComponentStorage<u32>,
 }
 
-type World = WorldStorage<GameComponents>;
+#[derive(Default)]
+struct Resources {
+    current_level: u32,
+}
+
+type World = WorldStorage<Components, Resources>;
 
 fn main() {
         let mut world = World::default();
@@ -48,7 +53,7 @@ fn main() {
         assert_eq!(npcs.len(), 2);
 
         // apply poison
-        query_execute_mut!(world, With(health, poison), |h: &mut u32, _| {
+        query_execute_mut!(world, With(health, poison), |_, h: &mut u32, _| {
             *h = h.saturating_sub(1);
         });
 
@@ -60,5 +65,8 @@ fn main() {
         let _ = world.components.poison.remove(player);
         let poisoned = query!(world, With(poison));
         assert_eq!(poisoned.len(), 1);
+
+        // use resource
+        world.resources.current_level += 1;
     }
 ```
