@@ -10,7 +10,6 @@ pub trait ComponentSet {
 }
 
 /// Component storage based on a sparse set data structure
-#[derive(Default)]
 pub struct ComponentStorage<T> {
     dense: Vec<Entity>,
     sparse: Vec<IdSize>,
@@ -74,6 +73,15 @@ impl<T> ComponentStorage<T> {
         match *self.dense.get(i)? == entity {
             false => None,
             true => Some(i),
+        }
+    }
+}
+impl<T> Default for ComponentStorage<T> {
+    fn default() -> Self {
+        Self {
+            dense: Vec::new(),
+            sparse: Vec::new(),
+            values: Vec::new(),
         }
     }
 }

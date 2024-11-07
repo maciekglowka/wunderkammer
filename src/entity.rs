@@ -73,7 +73,6 @@ impl EntityStorage {
     /// Recycles the previously despawned entity
     fn recycle(&mut self) -> Option<Entity> {
         let recycled_id = self.first_recycled?;
-        println!("Recycled_id: {}", recycled_id);
         let recycled = &mut self.entities[recycled_id as usize];
 
         if self.last_recycled == Some(recycled_id) {
