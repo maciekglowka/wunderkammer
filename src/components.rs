@@ -4,12 +4,13 @@ use std::collections::HashSet;
 const TOMBSTONE: IdSize = IdSize::MAX;
 
 /// Base trait for the `components` world field.
+/// Handles component cleanup after an entity is despawned from the world.
 pub trait ComponentSet {
     /// despawn all the entity's components
     fn despawn(&mut self, entity: Entity);
 }
 
-/// Component storage based on a sparse set data structure
+/// Component storage based on a sparse set data structure.
 pub struct ComponentStorage<T> {
     dense: Vec<Entity>,
     sparse: Vec<IdSize>,
@@ -23,12 +24,12 @@ impl<T> ComponentStorage<T> {
         let i = self.get_dense_index(entity)?;
         self.values.get_mut(i)
     }
-    /// Return currently stored entities
+    // Return currently stored entities
     pub fn entities(&self) -> HashSet<Entity> {
         HashSet::from_iter(self.dense.iter().copied())
     }
-    /// Insert a new component for the entity.
-    /// Overwrite if already exists.
+    // Insert a new component for the entity.
+    // Overwrite if already exists.
     pub fn insert(&mut self, entity: Entity, value: T) {
         let index = entity.id as usize;
         if index >= self.sparse.len() {
@@ -44,8 +45,8 @@ impl<T> ComponentStorage<T> {
         self.values.push(value);
     }
 
-    /// Removes component for a given entity
-    /// Keeps the values densly packed
+    // Removes component for a given entity
+    // Keeps the values densly packed
     pub fn remove(&mut self, entity: Entity) -> Option<T> {
         let removed_idx = self.get_dense_index(entity)?;
 

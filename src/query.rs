@@ -1,3 +1,4 @@
+/// Base query that extracts matching entities from the World struct.
 #[macro_export]
 macro_rules! query {
     ($world:expr, With($($component:ident),+)) => {
@@ -29,6 +30,7 @@ macro_rules! query {
     };
 }
 
+/// Helper query that allows to execute a given closure on each matching entity and it's components.
 #[macro_export]
 macro_rules! query_execute {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
@@ -39,6 +41,7 @@ macro_rules! query_execute {
     }};
 }
 
+/// Helper query that allows to execute a mutating closure on each matching entity and it's components.
 #[macro_export]
 macro_rules! query_execute_mut {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
@@ -49,6 +52,7 @@ macro_rules! query_execute_mut {
     }};
 }
 
+/// Query returning and immutable iterator over matching entities with their components.
 #[macro_export]
 macro_rules! query_iter {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+)) => {

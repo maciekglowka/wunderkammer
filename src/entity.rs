@@ -1,5 +1,6 @@
 pub type IdSize = u16;
 
+/// Unique world object identifier.
 #[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Entity {
     pub id: IdSize,

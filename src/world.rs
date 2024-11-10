@@ -1,6 +1,7 @@
 use crate::components::ComponentSet;
 use crate::entity::{Entity, EntityStorage};
 
+/// Main storage struct responsible for tracking entities, components and resources.
 #[derive(Default)]
 pub struct WorldStorage<C, R> {
     entities: EntityStorage,
