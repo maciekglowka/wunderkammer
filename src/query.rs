@@ -50,14 +50,13 @@ macro_rules! query_execute_mut {
 }
 
 #[macro_export]
-macro_rules! query_collect {
-    ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
-        let entities = query!($world, $(Without($($without),+),)? With($($component),+));
-        // after querying should be always safe to unwrap
-        entities.iter()
-            .map(|e| $f( *e, $($world.components.$component.get(*e).unwrap()),+ ))
-            .collect::<Vec<_>>()
-    }};
+macro_rules! query_iter {
+    ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+)) => {
+        query!($world, $(Without($($without),+),)? With($($component),+))
+            .iter()
+            // after querying should be always safe to unwrap
+            .map(|e| ( *e, $($world.components.$component.get(*e).unwrap()),+ ))
+    }
 }
 
 #[cfg(test)]
@@ -258,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn query_collect() {
+    fn query_iter() {
         #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
@@ -278,13 +277,15 @@ mod tests {
         w.components.strength.insert(b, 1);
         w.components.strength.insert(c, 1);
 
-        let v = query_collect!(w, With(health, strength), |_, h, s| h + s);
+        let v = query_iter!(w, With(health, strength))
+            .map(|(_, h, s)| h + s)
+            .collect::<Vec<_>>();
         assert_eq!(v.len(), 2);
         assert_eq!(v.iter().sum::<u32>(), 34);
     }
 
     #[test]
-    fn query_collect_without() {
+    fn query_iter_without() {
         #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
@@ -304,36 +305,11 @@ mod tests {
         w.components.strength.insert(b, 2);
         w.components.strength.insert(c, 1);
 
-        let v = query_collect!(w, Without(health), With(strength), |_, s| s);
+        let v = query_iter!(w, Without(health), With(strength))
+            .map(|(_, s)| s)
+            .collect::<Vec<_>>();
         assert_eq!(v.len(), 1);
         assert_eq!(*v[0], 2);
-    }
-
-    #[test]
-    fn query_collect_entity() {
-        #[derive(ComponentSet, Default)]
-        struct C {
-            pub health: ComponentStorage<u32>,
-            pub strength: ComponentStorage<u32>,
-        }
-        #[derive(Default)]
-        struct R;
-        let mut w = WorldStorage::<C, R>::default();
-        let a = w.spawn();
-        let b = w.spawn();
-        let c = w.spawn();
-
-        w.components.health.insert(a, 15);
-        w.components.health.insert(c, 17);
-
-        w.components.strength.insert(a, 1);
-        w.components.strength.insert(b, 1);
-        w.components.strength.insert(c, 1);
-
-        let v = query_collect!(w, With(health, strength), |e, _, _| e);
-        assert_eq!(v.len(), 2);
-        assert_eq!(v.contains(&a), true);
-        assert_eq!(v.contains(&c), true);
     }
 
     #[test]
