@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 wunderkammer_derive = { path = "wunderkammer_derive" }
+
+[dev-dependencies]
+macroquad = "0.4"
