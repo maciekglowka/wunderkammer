@@ -1,10 +1,16 @@
 # Wunderkammer
 
-An experimental ECS crate, with static component type definitions.
+An experimental EC(S) crate, with static component type definitions.
 
 It aims to avoid any runtime checks (like interior mutability, dynamic casting), while still allowing to dynamically insert and remove entity's components.
 
 The internal component storage is based on sparse set data structures, rather then archetypes.
+
+## Crate goals
+
+- Simplicity
+- Reliablity through compile-time checks and static typing
+- As few dependencies as possible (currently only `syn` and `quote` libs to handle derive macros)
 
 ## Example usage
 
