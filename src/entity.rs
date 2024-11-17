@@ -1,7 +1,11 @@
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
+
 pub type IdSize = u16;
 
 /// Unique world object identifier.
 #[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 pub struct Entity {
     pub id: IdSize,
     pub version: IdSize,
@@ -23,6 +27,7 @@ pub struct Entity {
 /// assert_eq!(storage.is_alive(a), false);
 /// ```
 #[derive(Default)]
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 pub struct EntityStorage {
     entities: Vec<Entity>,
     last_recycled: Option<IdSize>,

@@ -1,3 +1,6 @@
+#[cfg(feature = "serialize")]
+use serde::{Deserialize, Serialize};
+
 use crate::entity::{Entity, IdSize};
 use std::collections::HashSet;
 
@@ -11,6 +14,7 @@ pub trait ComponentSet {
 }
 
 /// Component storage based on a sparse set data structure.
+#[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 pub struct ComponentStorage<T> {
     dense: Vec<Entity>,
     sparse: Vec<IdSize>,

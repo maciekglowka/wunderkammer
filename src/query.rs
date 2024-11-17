@@ -84,7 +84,7 @@ mod tests {
 
         let entities = query!(w, With(health, name));
         assert_eq!(entities.len(), 1);
-        assert_eq!(entities.contains(&entity), true);
+        assert!(entities.contains(&entity));
     }
 
     #[test]
@@ -111,8 +111,8 @@ mod tests {
 
         let entities = query!(w, With(health, name));
         assert_eq!(entities.len(), 2);
-        assert_eq!(entities.contains(&a), true);
-        assert_eq!(entities.contains(&c), true);
+        assert!(entities.contains(&a));
+        assert!(entities.contains(&c));
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
 
         let entities = query!(w, Without(name), With(health));
         assert_eq!(entities.len(), 1);
-        assert_eq!(entities.contains(&b), true);
+        assert!(entities.contains(&b));
     }
 
     #[test]
