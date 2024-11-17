@@ -2,6 +2,13 @@
 name = "wunderkammer_derive"
 version = "0.1.0"
 edition = "2021"
+description = "Derive macros for the Wunderkammer crate"
+authors = ["Maciej Główka <mg@maciejglowka.com>"]
+license = "MIT"
+repository = "https://github.com/maciekglowka/wunderkammer"
+publish = true
+keywords = ["gamedev", "ecs", "compositioni"]
+categories = ["game-development", "data-structures"]
 
 [lib]
 proc-macro = true

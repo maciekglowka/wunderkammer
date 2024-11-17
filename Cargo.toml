@@ -16,7 +16,7 @@ serialize = ["dep:serde"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"], optional = true }
-wunderkammer_derive = { path = "wunderkammer_derive" }
+wunderkammer_derive = { version = "0.1", path = "wunderkammer_derive" }
 
 [dev-dependencies]
 serde_json = "1.0"
