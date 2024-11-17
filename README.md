@@ -1,16 +1,35 @@
 # Wunderkammer
 
-An experimental EC(S) crate, with static component type definitions.
+### An experimental EC(S) crate.
 
-It aims to avoid any runtime checks (like interior mutability, dynamic casting), while still allowing to dynamically insert and remove entity's components.
+Provides a simple Entity-Component structure, meant for small scoped data oriented games.
+
+
+It aims to solve the most basic requirements of a component storage:
+
+- flexible object composition
+- querying for entities with a certain component set attached and processing their data
+
+The crate is merely a storage data structure and does not enforce any specific game architecture.
+It is meant to also work in a traditional game loop context.
+
+Relies completely on static typing and compile time checks, while still allowing
+for runtime insertion and removal of components.
+    
+No unsafe code, internal mutability (like `RefCell`) or dynamic typing
+is used. It won't crash on you if you'll try to borrow a component set mutably twice :)
 
 The internal component storage is based on sparse set data structures, rather then archetypes.
+It should still provide some level of cache locality - the component data is held in continuous vector types.
 
 ## Crate goals
 
-- Simplicity
+- Simple but flexible data storage for tiny games
 - Reliablity through compile-time checks and static typing
-- As few dependencies as possible (currently only `syn` and `quote` libs to handle derive macros)
+- Dynamic component insertion and removal
+- Recycling of despawned entities
+- Easy (de)serialization - via optional `serialize` feature
+- As few dependencies as possible (currently only `syn` and `quote` libs to handle derive macros, + `serde` behind a feature flag)
 
 ## Example usage
 
