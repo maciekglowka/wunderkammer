@@ -1,5 +1,8 @@
 # Wunderkammer
 
+[![crates.io](https://img.shields.io/crates/v/wunderkammer)](https://crates.io/crates/wunderkammer)
+[![Documentation](https://img.shields.io/docsrs/wunderkammer)](https://docs.rs/wunderkammer/) 
+
 **An experimental EC(S) crate.**
 
 Provides a simple Entity-Component structure, meant for small scoped data oriented games (eg. roguelikes).
