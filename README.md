@@ -1,7 +1,8 @@
 # Wunderkammer
 
 [![crates.io](https://img.shields.io/crates/v/wunderkammer)](https://crates.io/crates/wunderkammer)
-[![Documentation](https://img.shields.io/docsrs/wunderkammer)](https://docs.rs/wunderkammer/) 
+[![Documentation](https://img.shields.io/docsrs/wunderkammer)](https://docs.rs/wunderkammer/)
+[![CI](https://github.com/maciekglowka/wunderkammer/actions/workflows/rust.yml/badge.svg)](https://github.com/maciekglowka/wunderkammer/actions/workflows/rust.yml)
 
 **An experimental EC(S) crate.**
 
