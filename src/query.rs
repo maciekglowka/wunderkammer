@@ -12,7 +12,7 @@ macro_rules! query {
                 .expect("This iterator shoud never be empty!")
         }
     };
-    ($world:expr, Without($($without:ident)+), With($($component:ident),+)) => {
+    ($world:expr, Without($($without:ident),+), With($($component:ident),+)) => {
         {
             let with = [
                 $($world.components.$component.entities()), +
@@ -140,6 +140,39 @@ mod tests {
         let entities = query!(w, Without(name), With(health));
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&b));
+    }
+
+    #[test]
+    fn query_without_many() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub attack: ComponentStorage<u32>,
+            pub health: ComponentStorage<u32>,
+            pub name: ComponentStorage<String>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+        let c = w.spawn();
+        let d = w.spawn();
+
+        w.components.attack.insert(a, 2);
+        w.components.health.insert(a, 15);
+        w.components.name.insert(a, "Fifteen".to_string());
+
+        w.components.health.insert(b, 16);
+        w.components.name.insert(b, "Sixteen".to_string());
+
+        w.components.attack.insert(c, 3);
+        w.components.name.insert(c, "Seventeen".to_string());
+
+        w.components.name.insert(d, "Eighteen".to_string());
+
+        let entities = query!(w, Without(attack, health), With(name));
+        assert_eq!(entities.len(), 1);
+        assert!(entities.contains(&d));
     }
 
     #[test]
@@ -310,6 +343,35 @@ mod tests {
         w.components.strength.insert(c, 1);
 
         let v = query_iter!(w, Without(health), With(strength))
+            .map(|(_, s)| s)
+            .collect::<Vec<_>>();
+        assert_eq!(v.len(), 1);
+        assert_eq!(*v[0], 2);
+    }
+
+    #[test]
+    fn query_iter_without_many() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub player: ComponentStorage<()>,
+            pub health: ComponentStorage<u32>,
+            pub strength: ComponentStorage<u32>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+        let c = w.spawn();
+
+        w.components.player.insert(a, ());
+        w.components.health.insert(c, 17);
+
+        w.components.strength.insert(a, 1);
+        w.components.strength.insert(b, 2);
+        w.components.strength.insert(c, 1);
+
+        let v = query_iter!(w, Without(health, player), With(strength))
             .map(|(_, s)| s)
             .collect::<Vec<_>>();
         assert_eq!(v.len(), 1);
