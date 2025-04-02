@@ -35,6 +35,12 @@ impl<T> ComponentStorage<T> {
     // Insert a new component for the entity.
     // Overwrite if already exists.
     pub fn insert(&mut self, entity: Entity, value: T) {
+        // check if replacement
+        if let Some(index) = self.get_dense_index(entity) {
+            self.values[index] = value;
+            return;
+        }
+
         let index = entity.id as usize;
         if index >= self.sparse.len() {
             // fill empty values with tombstones
@@ -50,7 +56,7 @@ impl<T> ComponentStorage<T> {
     }
 
     // Removes component for a given entity
-    // Keeps the values densly packed
+    // Keeps the values densely packed
     pub fn remove(&mut self, entity: Entity) -> Option<T> {
         let removed_idx = self.get_dense_index(entity)?;
 
@@ -104,6 +110,22 @@ mod tests {
         assert_eq!(storage.dense.len(), 1);
         assert_eq!(storage.values.len(), 1);
         assert_eq!(storage.get(entity), Some(&"VALUE"));
+    }
+
+    #[test]
+    fn insert_replace() {
+        let mut storage = ComponentStorage::default();
+        for i in 0..5 {
+            let entity = Entity { id: i, version: 0 };
+            storage.insert(entity, format!("VALUE{}", i));
+        }
+
+        let entity = Entity { id: 2, version: 0 };
+        storage.insert(entity, "VALUE_NEW".to_string());
+
+        assert_eq!(storage.dense.len(), 5);
+        assert_eq!(storage.values.len(), 5);
+        assert_eq!(storage.get(entity), Some(&"VALUE_NEW".to_string()));
     }
 
     #[test]
@@ -169,6 +191,23 @@ mod tests {
         assert_eq!(storage.dense.len(), 0);
         assert_eq!(storage.values.len(), 0);
         assert_eq!(storage.get(entity), None);
+    }
+
+    #[test]
+    fn recycle() {
+        let mut storage = ComponentStorage::default();
+        let entity_0 = Entity { id: 0, version: 0 };
+        let entity_1 = Entity { id: 1, version: 0 };
+        let entity_2 = Entity { id: 2, version: 0 };
+        storage.insert(entity_0, "VALUE0");
+        storage.insert(entity_1, "VALUE1");
+        storage.remove(entity_0);
+
+        let entity_0r = Entity { id: 0, version: 1 };
+        storage.insert(entity_0r, "VALUE0r");
+
+        assert_eq!(storage.dense.len(), 2);
+        assert!(!storage.entities().contains(&entity_0));
     }
 
     #[test]

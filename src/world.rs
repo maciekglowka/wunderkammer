@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use crate::components::ComponentSet;
 use crate::entity::{Entity, EntityStorage};
 
-/// Main storage struct responsible for tracking entities, components and resources.
+/// Main storage struct responsible for tracking entities, components and
+/// resources.
 #[derive(Default)]
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 pub struct WorldStorage<C, R> {
@@ -17,6 +18,7 @@ impl<C: ComponentSet, R: Default> WorldStorage<C, R> {
         self.entities.spawn()
     }
     pub fn despawn(&mut self, entity: Entity) {
+        println!("Despawn {:?}", entity);
         self.components.despawn(entity);
         self.entities.despawn(entity);
     }

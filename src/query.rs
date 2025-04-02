@@ -9,7 +9,7 @@ macro_rules! query {
             // won't fail as we match at least one component
             with.into_iter()
                 .reduce(|acc, h| acc.intersection(&h).copied().collect())
-                .expect("This iterator shoud never be empty!")
+                .expect("This iterator should never be empty!")
         }
     };
     ($world:expr, Without($($without:ident),+), With($($component:ident),+)) => {
@@ -23,14 +23,15 @@ macro_rules! query {
             // won't fail as we match at least one component
             let entities = with.into_iter()
                 .reduce(|acc, h| acc.intersection(&h).copied().collect())
-                .expect("This iterator shoud never be empty!");
+                .expect("This iterator should never be empty!");
             without.into_iter()
                 .fold(entities, |acc, h| acc.difference(&h).copied().collect())
         }
     };
 }
 
-/// Helper query that allows to execute a given closure on each matching entity and it's components.
+/// Helper query that allows to execute a given closure on each matching entity
+/// and it's components.
 #[macro_export]
 macro_rules! query_execute {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
@@ -41,7 +42,8 @@ macro_rules! query_execute {
     }};
 }
 
-/// Helper query that allows to execute a mutating closure on each matching entity and it's components.
+/// Helper query that allows to execute a mutating closure on each matching
+/// entity and it's components.
 #[macro_export]
 macro_rules! query_execute_mut {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
@@ -52,7 +54,8 @@ macro_rules! query_execute_mut {
     }};
 }
 
-/// Query returning and immutable iterator over matching entities with their components.
+/// Query returning and immutable iterator over matching entities with their
+/// components.
 #[macro_export]
 macro_rules! query_iter {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+)) => {
@@ -173,6 +176,54 @@ mod tests {
         let entities = query!(w, Without(attack, health), With(name));
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&d));
+    }
+
+    #[test]
+    fn query_after_despawn() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let entity = w.spawn();
+        let entity_keep = w.spawn();
+
+        w.components.health.insert(entity, 15);
+        w.components.health.insert(entity_keep, 25);
+        w.despawn(entity);
+
+        let entities = query!(w, With(health));
+        assert_eq!(entities.len(), 1);
+        assert!(entities.contains(&entity_keep));
+    }
+
+    #[test]
+    fn query_after_recycle() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let entity = w.spawn();
+        let entity_keep = w.spawn();
+
+        w.components.health.insert(entity, 15);
+        w.components.health.insert(entity_keep, 25);
+        w.despawn(entity);
+        let entity_recycle = w.spawn();
+        w.components.health.insert(entity_recycle, 35);
+
+        assert_eq!(entity.id, entity_recycle.id);
+        assert_ne!(entity.version, entity_recycle.version);
+
+        let entities = query!(w, With(health));
+        assert_eq!(entities.len(), 2);
+        assert!(entities.contains(&entity_keep));
+        assert!(entities.contains(&entity_recycle));
     }
 
     #[test]

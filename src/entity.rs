@@ -7,12 +7,13 @@ pub type IdSize = u16;
 #[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 pub struct Entity {
-    pub id: IdSize,
-    pub version: IdSize,
+    pub(crate) id: IdSize,
+    pub(crate) version: IdSize,
 }
 
 /// EntityStorage responsible for spawning and despawning of the entities.
-/// Entity id's are recycled internally and versioned to avoid dead entitiy usage.
+/// Entity id's are recycled internally and versioned to avoid dead entity
+/// usage.
 /// ```rust
 /// use wunderkammer::prelude::*;
 /// let mut storage = EntityStorage::default();
@@ -23,8 +24,6 @@ pub struct Entity {
 /// let c = storage.spawn();
 /// assert_eq!(c.id, a.id);
 /// assert_eq!(c.version, a.version + 1);
-/// assert_eq!(storage.is_alive(c), true);
-/// assert_eq!(storage.is_alive(a), false);
 /// ```
 #[derive(Default)]
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
@@ -55,16 +54,6 @@ impl EntityStorage {
         }
         // now this one is the prev_recycled
         self.last_recycled = Some(entity.id);
-    }
-    /// Checks wheter a given entity is still a valid one
-    pub fn is_alive(&self, entity: Entity) -> bool {
-        let stored = self.entities[entity.id as usize];
-        // check if recycled (the id does not match with the index)
-        if stored.id != entity.id {
-            return false;
-        }
-        // check if versions match
-        stored.version == entity.version
     }
     /// Spawns a fresh entity, with version 0
     fn spawn_new(&mut self) -> Entity {
@@ -116,7 +105,7 @@ mod tests {
         let mut storage = EntityStorage::default();
         let entities = (0..5).map(|_| storage.spawn_new()).collect::<Vec<_>>();
         storage.despawn(entities[2]);
-        assert_eq!(storage.is_alive(entities[2]), false);
+        assert_eq!(false, storage.entities.contains(&entities[2]));
     }
 
     #[test]
