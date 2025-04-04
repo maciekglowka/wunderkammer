@@ -13,12 +13,19 @@ fn impl_component_set(ast: &syn::DeriveInput) -> TokenStream {
     let syn::Data::Struct(data_struct) = &ast.data else {
         panic!("Components Derive: Not a data struct!")
     };
-    let members = data_struct.fields.members();
+    let members_despawn = data_struct.fields.members();
+    let members_entities = data_struct.fields.members();
 
     let gen = quote! {
         impl ComponentSet for #name {
             fn despawn(&mut self, entity: Entity) {
-                #(self.#members.remove(entity);)*
+                #(self.#members_despawn.remove(entity);)*
+            }
+            fn entities_str(&self, component: &str) -> HashSet<Entity> {
+                match component {
+                    #(stringify!(#members_entities) => self.#members_entities.entities(),)*
+                    _ => HashSet::new()
+                }
             }
         }
     };

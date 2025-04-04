@@ -7,8 +7,8 @@ pub type IdSize = u16;
 #[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 pub struct Entity {
-    pub(crate) id: IdSize,
-    pub(crate) version: IdSize,
+    pub id: IdSize,
+    pub version: IdSize,
 }
 
 /// EntityStorage responsible for spawning and despawning of the entities.
