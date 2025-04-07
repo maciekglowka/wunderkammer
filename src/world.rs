@@ -18,7 +18,6 @@ impl<C: ComponentSet, R: Default> WorldStorage<C, R> {
         self.entities.spawn()
     }
     pub fn despawn(&mut self, entity: Entity) {
-        println!("Despawn {:?}", entity);
         self.components.despawn(entity);
         self.entities.despawn(entity);
     }
