@@ -2,6 +2,7 @@
 pub(crate) mod components;
 pub(crate) mod entity;
 pub(crate) mod query;
+pub(crate) mod scheduler;
 mod tests;
 pub(crate) mod world;
 
