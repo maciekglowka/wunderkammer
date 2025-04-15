@@ -18,12 +18,19 @@ impl<W: 'static> Scheduler<W> {
         }
     }
     pub fn add_system<T: 'static, M>(&mut self, handler: impl IntoHandler<T, W, M>) {
+        self.add_system_with_priority(handler, 0);
+    }
+    pub fn add_system_with_priority<T: 'static, M>(
+        &mut self,
+        handler: impl IntoHandler<T, W, M>,
+        priority: i32,
+    ) {
         self.handlers
             .entry(TypeId::of::<T>())
             .or_insert(HandlerSet(Vec::new()))
-            .subscribe(handler.handler());
+            .subscribe(handler.handler(), priority);
     }
-    pub fn send<T: 'static>(&mut self, mut event: T) {
+    pub fn send<T: 'static>(&mut self, event: T) {
         self.queue
             .push_back(vec![ScheduledEvent(TypeId::of::<T>(), Box::new(event))]);
     }
@@ -108,7 +115,7 @@ where
     F: Fn(&mut T),
     T: 'static,
 {
-    fn execute(&self, event: &mut Box<dyn Any>, world: &mut W, _: &mut Sender) {
+    fn execute(&self, event: &mut Box<dyn Any>, _: &mut W, _: &mut Sender) {
         let ev = event.downcast_mut().unwrap();
         self.0(ev);
     }
@@ -152,11 +159,8 @@ where
 
 struct HandlerSet<W>(Vec<HandlerEntry<W>>);
 impl<W> HandlerSet<W> {
-    fn subscribe(&mut self, handler: Box<dyn EventHandler<W>>) {
-        self.0.push(HandlerEntry {
-            priority: 0,
-            handler,
-        });
+    fn subscribe(&mut self, handler: Box<dyn EventHandler<W>>, priority: i32) {
+        self.0.push(HandlerEntry { priority, handler });
         self.0.sort_by_key(|a| a.priority);
     }
     fn handle(&self, event: &mut Box<dyn Any>, world: &mut W, sender: &mut Sender) {
@@ -322,5 +326,28 @@ mod tests {
             scheduler.step(&mut world);
         }
         assert_eq!(6, world.0)
+    }
+    #[test]
+    fn test_priority() {
+        // Events.
+        struct Attack(u32);
+        struct World(u32);
+
+        fn add_handler(attack: &mut Attack, world: &mut World) {
+            world.0 = attack.0 + 2;
+        }
+        fn multiply_handler(attack: &mut Attack) {
+            attack.0 *= 3;
+        }
+
+        let mut scheduler = Scheduler::new();
+        scheduler.add_system_with_priority(add_handler, 1);
+        scheduler.add_system_with_priority(multiply_handler, 0);
+
+        let mut world = World(0);
+        scheduler.send(Attack(4));
+
+        scheduler.step(&mut world);
+        assert_eq!(4 * 3 + 2, world.0)
     }
 }
