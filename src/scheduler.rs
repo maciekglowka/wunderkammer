@@ -3,6 +3,8 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
+use crate::observer::{ObservableQueue, Observer};
+
 pub struct Scheduler<W> {
     handlers: HashMap<TypeId, Box<dyn HandlerSetErased<W>>>,
     queue: VecDeque<Vec<ScheduledEvent>>,
@@ -26,8 +28,8 @@ impl<W: 'static> Scheduler<W> {
     ) {
         self.handlers
             .entry(TypeId::of::<T>())
-            .or_insert(Box::new(HandlerSet::<T, W>(Vec::new())))
-            .subscribe(Box::new(handler.handler()), priority);
+            .or_insert(Box::new(HandlerSet::<T, W>::new()))
+            .add_handler(Box::new(handler.handler()), priority);
     }
     pub fn send<T: 'static>(&mut self, event: T) {
         self.queue
@@ -35,15 +37,24 @@ impl<W: 'static> Scheduler<W> {
     }
     pub fn step(&mut self, world: &mut W) {
         if let Some(epoch) = self.queue.pop_front() {
-            for mut event in epoch {
-                if let Some(set) = self.handlers.get(&event.0) {
-                    set.handle(&mut event.1, world, &mut self.sender);
+            for event in epoch {
+                if let Some(set) = self.handlers.get_mut(&event.0) {
+                    set.handle(event.1, world, &mut self.sender);
                 }
             }
         }
         if !self.sender.0.is_empty() {
             self.queue.push_back(self.sender.0.drain(..).collect());
         }
+    }
+    pub fn observe<T: 'static>(&mut self) -> Option<Observer<T>> {
+        let observer = self
+            .handlers
+            .entry(TypeId::of::<T>())
+            .or_insert(Box::new(HandlerSet::<T, W>::new()))
+            .observe();
+        let boxed: Box<Observer<T>> = observer.downcast().ok()?;
+        Some(*boxed)
     }
 }
 
@@ -123,25 +134,41 @@ struct WithSenderMarker;
 struct WithWorldAndSenderMarker;
 
 trait HandlerSetErased<W> {
-    fn subscribe(&mut self, handler: Box<dyn Any>, priority: i32);
-    fn handle(&self, event: &mut Box<dyn Any>, world: &mut W, sender: &mut Sender);
+    fn add_handler(&mut self, handler: Box<dyn Any>, priority: i32);
+    fn handle(&mut self, event: Box<dyn Any>, world: &mut W, sender: &mut Sender);
+    fn observe(&mut self) -> Box<dyn Any>;
 }
 
-struct HandlerSet<T, W>(Vec<HandlerEntry<T, W>>);
+struct HandlerSet<T, W> {
+    handlers: Vec<HandlerEntry<T, W>>,
+    observable: ObservableQueue<T>,
+}
+impl<T, W> HandlerSet<T, W> {
+    fn new() -> Self {
+        Self {
+            handlers: Vec::new(),
+            observable: ObservableQueue::new(),
+        }
+    }
+}
 impl<T: 'static, W: 'static> HandlerSetErased<W> for HandlerSet<T, W> {
-    fn subscribe(&mut self, handler: Box<dyn Any>, priority: i32) {
+    fn add_handler(&mut self, handler: Box<dyn Any>, priority: i32) {
         let h = *handler.downcast().unwrap();
-        self.0.push(HandlerEntry {
+        self.handlers.push(HandlerEntry {
             priority,
             handler: h,
         });
-        self.0.sort_by_key(|a| a.priority);
+        self.handlers.sort_by_key(|a| a.priority);
     }
-    fn handle(&self, event: &mut Box<dyn Any>, world: &mut W, sender: &mut Sender) {
-        let ev = event.downcast_mut().unwrap();
-        for entry in self.0.iter() {
-            entry.handler.execute(ev, world, sender);
+    fn handle(&mut self, event: Box<dyn Any>, world: &mut W, sender: &mut Sender) {
+        let mut ev = event.downcast::<T>().unwrap();
+        for entry in self.handlers.iter() {
+            entry.handler.execute(ev.as_mut(), world, sender);
         }
+        self.observable.push(*ev);
+    }
+    fn observe(&mut self) -> Box<dyn Any> {
+        Box::new(self.observable.subscribe())
     }
 }
 
@@ -324,5 +351,62 @@ mod tests {
 
         scheduler.step(&mut world);
         assert_eq!(4 * 3 + 2, world.0)
+    }
+
+    #[test]
+    fn test_observe() {
+        // Events.
+        struct Attack(u32);
+        struct Damage(u32);
+
+        struct World(u32);
+
+        fn attack_handler(attack: &mut Attack, sender: &mut Sender) {
+            sender.send(Damage(2 * attack.0));
+        }
+
+        fn damage_handler(damage: &mut Damage, world: &mut World) {
+            world.0 = damage.0;
+        }
+
+        let mut scheduler = Scheduler::new();
+        scheduler.add_system(attack_handler);
+        scheduler.add_system(damage_handler);
+
+        let mut world = World(0);
+
+        let damage_observer = scheduler.observe::<Damage>().unwrap();
+
+        scheduler.send(Attack(3));
+
+        for _ in 0..2 {
+            scheduler.step(&mut world);
+        }
+
+        assert_eq!(Some(6), damage_observer.map_next(|a| a.0));
+    }
+
+    #[test]
+    fn test_observe_before() {
+        // Event.
+        struct Attack(u32);
+
+        struct World;
+
+        fn attack_handler(_: &mut Attack) {
+            // idle
+        }
+
+        let mut scheduler = Scheduler::new();
+        let attack_observer = scheduler.observe::<Attack>().unwrap();
+
+        scheduler.add_system(attack_handler);
+
+        let mut world = World;
+
+        scheduler.send(Attack(3));
+        scheduler.step(&mut world);
+
+        assert_eq!(Some(3), attack_observer.map_next(|a| a.0));
     }
 }

@@ -26,7 +26,7 @@ fn impl_component_set(ast: &syn::DeriveInput) -> TokenStream {
             fn entities_str(&self, component: &str) -> std::collections::HashSet<Entity> {
                 match component {
                     #(stringify!(#members_entities) => self.#members_entities.entities(),)*
-                    _ => HashSet::new()
+                    _ => std::collections::HashSet::new()
                 }
             }
         }

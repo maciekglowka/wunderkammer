@@ -2,7 +2,7 @@ use std::{
     collections::VecDeque,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, RwLock, RwLockReadGuard, Weak,
+        Arc, RwLock, Weak,
     },
 };
 
@@ -24,8 +24,11 @@ impl<T> ObservableQueue<T> {
             return;
         };
 
-        let mut queue = self.queue.write().unwrap();
-        queue.push_back(value);
+        {
+            let mut queue = self.queue.write().unwrap();
+            queue.push_back(value);
+        }
+        self.synchronize();
     }
 
     pub fn subscribe(&mut self) -> Observer<T> {
@@ -38,13 +41,13 @@ impl<T> ObservableQueue<T> {
         }
     }
 
-    pub fn synchronize(&mut self) {
+    fn synchronize(&mut self) {
         let mut queue = self.queue.write().unwrap();
         // purge observers
         self.observers.retain(|a| a.strong_count() > 0);
 
         // get minimal front
-        let new_front = self
+        let mut new_front = self
             .observers
             .iter()
             .filter_map(|a| a.upgrade())
@@ -52,12 +55,14 @@ impl<T> ObservableQueue<T> {
             .min()
             .unwrap_or(usize::MAX);
 
+        new_front = new_front.min(queue.len());
+
         for front in self.observers.iter().filter_map(|a| a.upgrade()) {
             // shift fronts by the amount popped
             front.fetch_sub(new_front, Ordering::Relaxed);
         }
 
-        let _ = queue.drain(..new_front as usize);
+        let _ = queue.drain(..new_front);
     }
 }
 
@@ -204,5 +209,19 @@ mod tests {
 
         assert_eq!(observer_0.map_next(|a| *a), Some(1));
         assert_eq!(observer_1.map_next(|a| *a), None);
+    }
+
+    #[test]
+    fn test_drop_observer() {
+        let mut queue = ObservableQueue::new();
+        let observer = queue.subscribe();
+
+        queue.push(3);
+        queue.push(12);
+
+        drop(observer);
+        queue.synchronize();
+        assert!(queue.observers.is_empty());
+        assert!(queue.queue.read().unwrap().is_empty());
     }
 }

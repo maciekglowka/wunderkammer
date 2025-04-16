@@ -103,12 +103,12 @@ fn setup() -> World {
     world.components.ship.insert(ship_entity, ());
 
     // spawn asteroids
-    spawn_intial_asteroids(&mut world);
+    spawn_initial_asteroids(&mut world);
 
     world
 }
 
-fn spawn_intial_asteroids(world: &mut World) {
+fn spawn_initial_asteroids(world: &mut World) {
     let screen_center = Vec2::new(screen_width() / 2., screen_height() / 2.);
     for _ in 0..10 {
         spawn_asteroid(
