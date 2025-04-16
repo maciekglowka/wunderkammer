@@ -71,11 +71,24 @@ impl Sender {
     }
 }
 
-pub struct EventHandler<T, W>(Box<dyn Fn(&mut T, &mut W, &mut Sender)>);
+pub struct SchedulerContext<'a> {
+    sender: &'a mut Sender,
+    is_cancelled: bool,
+}
+impl<'a> SchedulerContext<'a> {
+    pub fn send<T: 'static>(&mut self, event: T) {
+        self.sender.send(event);
+    }
+    pub fn cancel_event(&mut self) {
+        self.is_cancelled = true;
+    }
+}
+
+pub struct EventHandler<T, W>(Box<dyn Fn(&mut T, &mut W, &mut SchedulerContext)>);
 
 impl<T, W> EventHandler<T, W> {
-    fn execute(&self, event: &mut T, world: &mut W, sender: &mut Sender) {
-        self.0(event, world, sender)
+    fn execute(&self, event: &mut T, world: &mut W, context: &mut SchedulerContext) {
+        self.0(event, world, context)
     }
 }
 
@@ -89,7 +102,7 @@ where
     T: 'static,
 {
     fn handler(self) -> EventHandler<T, W> {
-        let wrapper = move |a: &mut T, _: &mut W, _: &mut Sender| self(a);
+        let wrapper = move |a: &mut T, _: &mut W, _: &mut SchedulerContext| self(a);
         EventHandler::<T, W>(Box::new(wrapper))
     }
 }
@@ -100,29 +113,29 @@ where
     T: 'static,
 {
     fn handler(self) -> EventHandler<T, W> {
-        let wrapper = move |a: &mut T, w: &mut W, _: &mut Sender| self(a, w);
+        let wrapper = move |a: &mut T, w: &mut W, _: &mut SchedulerContext| self(a, w);
         EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
-impl<F, T, W> IntoHandler<T, W, WithSenderMarker> for F
+impl<F, T, W> IntoHandler<T, W, WithContextMarker> for F
 where
-    F: Fn(&mut T, &mut Sender) + 'static,
+    F: Fn(&mut T, &mut SchedulerContext) + 'static,
     T: 'static,
 {
     fn handler(self) -> EventHandler<T, W> {
-        let wrapper = move |a: &mut T, _: &mut W, s: &mut Sender| self(a, s);
+        let wrapper = move |a: &mut T, _: &mut W, c: &mut SchedulerContext| self(a, c);
         EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
-impl<F, T, W> IntoHandler<T, W, WithWorldAndSenderMarker> for F
+impl<F, T, W> IntoHandler<T, W, WithWorldAndContextMarker> for F
 where
-    F: Fn(&mut T, &mut W, &mut Sender) + 'static,
+    F: Fn(&mut T, &mut W, &mut SchedulerContext) + 'static,
     T: 'static,
 {
     fn handler(self) -> EventHandler<T, W> {
-        let wrapper = move |a: &mut T, w: &mut W, s: &mut Sender| self(a, w, s);
+        let wrapper = move |a: &mut T, w: &mut W, c: &mut SchedulerContext| self(a, w, c);
         EventHandler::<T, W>(Box::new(wrapper))
     }
 }
@@ -130,8 +143,8 @@ where
 // Markers
 struct EventOnlyMarker;
 struct WithWorldMarker;
-struct WithSenderMarker;
-struct WithWorldAndSenderMarker;
+struct WithContextMarker;
+struct WithWorldAndContextMarker;
 
 trait HandlerSetErased<W> {
     fn add_handler(&mut self, handler: Box<dyn Any>, priority: i32);
@@ -162,8 +175,15 @@ impl<T: 'static, W: 'static> HandlerSetErased<W> for HandlerSet<T, W> {
     }
     fn handle(&mut self, event: Box<dyn Any>, world: &mut W, sender: &mut Sender) {
         let mut ev = event.downcast::<T>().unwrap();
+        let mut cx = SchedulerContext {
+            sender,
+            is_cancelled: false,
+        };
         for entry in self.handlers.iter() {
-            entry.handler.execute(ev.as_mut(), world, sender);
+            entry.handler.execute(ev.as_mut(), world, &mut cx);
+            if cx.is_cancelled {
+                return;
+            }
         }
         self.observable.push(*ev);
     }
@@ -224,8 +244,8 @@ mod tests {
         struct Attack(u32);
         struct World;
 
-        fn attack_handler(attack: &mut Attack, sender: &mut Sender) {
-            sender.send(Attack(17 + attack.0));
+        fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) {
+            cx.send(Attack(17 + attack.0));
         }
 
         let mut scheduler = Scheduler::new();
@@ -254,9 +274,9 @@ mod tests {
         struct Attack(u32);
         struct World(u32);
 
-        fn attack_handler(attack: &mut Attack, world: &mut World, sender: &mut Sender) {
+        fn attack_handler(attack: &mut Attack, world: &mut World, cx: &mut SchedulerContext) {
             world.0 = attack.0;
-            sender.send(Attack(17 + attack.0));
+            cx.send(Attack(17 + attack.0));
         }
 
         let mut scheduler = Scheduler::new();
@@ -286,9 +306,9 @@ mod tests {
         struct Attack(u32);
         struct World(u32);
 
-        fn attack_handler(attack: &mut Attack, world: &mut World, sender: &mut Sender) {
+        fn attack_handler(attack: &mut Attack, world: &mut World, cx: &mut SchedulerContext) {
             world.0 += attack.0;
-            sender.send(Attack(attack.0));
+            cx.send(Attack(attack.0));
         }
 
         let mut scheduler = Scheduler::new();
@@ -309,8 +329,8 @@ mod tests {
 
         struct World(u32);
 
-        fn attack_handler(attack: &mut Attack, sender: &mut Sender) {
-            sender.send(Damage(2 * attack.0));
+        fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) {
+            cx.send(Damage(2 * attack.0));
         }
 
         fn damage_handler(damage: &mut Damage, world: &mut World) {
@@ -354,6 +374,31 @@ mod tests {
     }
 
     #[test]
+    fn test_cancel() {
+        // Events.
+        struct Attack;
+
+        struct World(u32);
+
+        fn attack(_: &mut Attack, world: &mut World) {
+            world.0 = 10;
+        }
+        fn shield(_: &mut Attack, cx: &mut SchedulerContext) {
+            cx.cancel_event();
+        }
+
+        let mut scheduler = Scheduler::new();
+        scheduler.add_system_with_priority(shield, 0);
+        scheduler.add_system_with_priority(attack, 1);
+
+        let mut world = World(0);
+        scheduler.send(Attack);
+
+        scheduler.step(&mut world);
+        assert_eq!(0, world.0)
+    }
+
+    #[test]
     fn test_observe() {
         // Events.
         struct Attack(u32);
@@ -361,8 +406,8 @@ mod tests {
 
         struct World(u32);
 
-        fn attack_handler(attack: &mut Attack, sender: &mut Sender) {
-            sender.send(Damage(2 * attack.0));
+        fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) {
+            cx.send(Damage(2 * attack.0));
         }
 
         fn damage_handler(damage: &mut Damage, world: &mut World) {
@@ -408,5 +453,29 @@ mod tests {
         scheduler.step(&mut world);
 
         assert_eq!(Some(3), attack_observer.map_next(|a| a.0));
+    }
+
+    #[test]
+    fn test_observe_after() {
+        // Event.
+        struct Attack(u32);
+
+        struct World;
+
+        fn attack_handler(_: &mut Attack) {
+            // idle
+        }
+
+        let mut scheduler = Scheduler::new();
+
+        scheduler.add_system(attack_handler);
+
+        let mut world = World;
+
+        scheduler.send(Attack(3));
+        scheduler.step(&mut world);
+
+        let attack_observer = scheduler.observe::<Attack>().unwrap();
+        assert_eq!(None, attack_observer.map_next(|a| a.0));
     }
 }
