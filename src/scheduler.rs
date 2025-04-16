@@ -5,7 +5,7 @@ use std::{
 };
 
 pub struct Scheduler<W> {
-    handlers: HashMap<TypeId, HandlerSet<W>>,
+    handlers: HashMap<TypeId, Box<dyn HandlerSetErased<W>>>,
     queue: VecDeque<Vec<ScheduledEvent>>,
     sender: Sender,
 }
@@ -18,7 +18,7 @@ impl<W: 'static> Scheduler<W> {
         }
     }
     pub fn add_system<T: 'static, M>(&mut self, handler: impl IntoHandler<T, W, M>) {
-        self.add_system_with_priority(handler, 0);
+        self.add_system_with_priority::<T, M>(handler, 0);
     }
     pub fn add_system_with_priority<T: 'static, M>(
         &mut self,
@@ -27,8 +27,8 @@ impl<W: 'static> Scheduler<W> {
     ) {
         self.handlers
             .entry(TypeId::of::<T>())
-            .or_insert(HandlerSet(Vec::new()))
-            .subscribe(handler.handler(), priority);
+            .or_insert(Box::new(HandlerSet::<T, W>(Vec::new())))
+            .subscribe(Box::new(handler.handler()), priority);
     }
     pub fn send<T: 'static>(&mut self, event: T) {
         self.queue
@@ -61,118 +61,94 @@ impl Sender {
     }
 }
 
-pub trait IntoHandler<T, W, M> {
-    fn handler(self) -> Box<dyn EventHandler<W>>;
+pub struct EventHandler<T, W>(Box<dyn Fn(&mut T, &mut W, &mut Sender)>);
+
+impl<T, W> EventHandler<T, W> {
+    fn execute(&self, event: &mut T, world: &mut W, sender: &mut Sender) {
+        self.0(event, world, sender)
+    }
 }
 
-impl<F, T, W> IntoHandler<T, W, EventOnlyHandler<F, T>> for F
+pub trait IntoHandler<T, W, M> {
+    fn handler(self) -> EventHandler<T, W>;
+}
+
+impl<F, T, W> IntoHandler<T, W, EventOnlyMarker> for F
 where
     F: Fn(&mut T) + 'static,
     T: 'static,
 {
-    fn handler(self) -> Box<dyn EventHandler<W>> {
-        Box::new(EventOnlyHandler(self, PhantomData::<T>))
+    fn handler(self) -> EventHandler<T, W> {
+        let wrapper = move |a: &mut T, _: &mut W, _: &mut Sender| self(a);
+        EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
-impl<F, T, W> IntoHandler<T, W, WithWorldHandler<F, T>> for F
+impl<F, T, W> IntoHandler<T, W, WithWorldMarker> for F
 where
     F: Fn(&mut T, &mut W) + 'static,
     T: 'static,
 {
-    fn handler(self) -> Box<dyn EventHandler<W>> {
-        Box::new(WithWorldHandler(self, PhantomData::<T>))
+    fn handler(self) -> EventHandler<T, W> {
+        let wrapper = move |a: &mut T, w: &mut W, _: &mut Sender| self(a, w);
+        EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
-impl<F, T, W> IntoHandler<T, W, WithSenderHandler<F, T>> for F
+impl<F, T, W> IntoHandler<T, W, WithSenderMarker> for F
 where
     F: Fn(&mut T, &mut Sender) + 'static,
     T: 'static,
 {
-    fn handler(self) -> Box<dyn EventHandler<W>> {
-        Box::new(WithSenderHandler(self, PhantomData::<T>))
+    fn handler(self) -> EventHandler<T, W> {
+        let wrapper = move |a: &mut T, _: &mut W, s: &mut Sender| self(a, s);
+        EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
-impl<F, T, W> IntoHandler<T, W, WithSenderAndWorldHandler<F, T>> for F
+impl<F, T, W> IntoHandler<T, W, WithWorldAndSenderMarker> for F
 where
     F: Fn(&mut T, &mut W, &mut Sender) + 'static,
     T: 'static,
 {
-    fn handler(self) -> Box<dyn EventHandler<W>> {
-        Box::new(WithSenderAndWorldHandler(self, PhantomData::<T>))
+    fn handler(self) -> EventHandler<T, W> {
+        let wrapper = move |a: &mut T, w: &mut W, s: &mut Sender| self(a, w, s);
+        EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
-pub trait EventHandler<W> {
-    fn execute(&self, event: &mut Box<dyn Any>, world: &mut W, sender: &mut Sender);
+// Markers
+struct EventOnlyMarker;
+struct WithWorldMarker;
+struct WithSenderMarker;
+struct WithWorldAndSenderMarker;
+
+trait HandlerSetErased<W> {
+    fn subscribe(&mut self, handler: Box<dyn Any>, priority: i32);
+    fn handle(&self, event: &mut Box<dyn Any>, world: &mut W, sender: &mut Sender);
 }
 
-struct EventOnlyHandler<F, T>(F, PhantomData<T>);
-impl<F, T, W> EventHandler<W> for EventOnlyHandler<F, T>
-where
-    F: Fn(&mut T),
-    T: 'static,
-{
-    fn execute(&self, event: &mut Box<dyn Any>, _: &mut W, _: &mut Sender) {
-        let ev = event.downcast_mut().unwrap();
-        self.0(ev);
-    }
-}
-
-struct WithWorldHandler<F, T>(F, PhantomData<T>);
-impl<F, T, W> EventHandler<W> for WithWorldHandler<F, T>
-where
-    F: Fn(&mut T, &mut W),
-    T: 'static,
-{
-    fn execute(&self, event: &mut Box<dyn Any>, world: &mut W, _: &mut Sender) {
-        let ev = event.downcast_mut().unwrap();
-        self.0(ev, world);
-    }
-}
-
-struct WithSenderHandler<F, T>(F, PhantomData<T>);
-impl<F, T, W> EventHandler<W> for WithSenderHandler<F, T>
-where
-    F: Fn(&mut T, &mut Sender),
-    T: 'static,
-{
-    fn execute(&self, event: &mut Box<dyn Any>, _: &mut W, sender: &mut Sender) {
-        let ev = event.downcast_mut().unwrap();
-        self.0(ev, sender);
-    }
-}
-
-struct WithSenderAndWorldHandler<F, T>(F, PhantomData<T>);
-impl<F, T, W> EventHandler<W> for WithSenderAndWorldHandler<F, T>
-where
-    F: Fn(&mut T, &mut W, &mut Sender),
-    T: 'static,
-{
-    fn execute(&self, event: &mut Box<dyn Any>, world: &mut W, sender: &mut Sender) {
-        let ev = event.downcast_mut().unwrap();
-        self.0(ev, world, sender);
-    }
-}
-
-struct HandlerSet<W>(Vec<HandlerEntry<W>>);
-impl<W> HandlerSet<W> {
-    fn subscribe(&mut self, handler: Box<dyn EventHandler<W>>, priority: i32) {
-        self.0.push(HandlerEntry { priority, handler });
+struct HandlerSet<T, W>(Vec<HandlerEntry<T, W>>);
+impl<T: 'static, W: 'static> HandlerSetErased<W> for HandlerSet<T, W> {
+    fn subscribe(&mut self, handler: Box<dyn Any>, priority: i32) {
+        let h = *handler.downcast().unwrap();
+        self.0.push(HandlerEntry {
+            priority,
+            handler: h,
+        });
         self.0.sort_by_key(|a| a.priority);
     }
     fn handle(&self, event: &mut Box<dyn Any>, world: &mut W, sender: &mut Sender) {
+        let ev = event.downcast_mut().unwrap();
         for entry in self.0.iter() {
-            entry.handler.execute(event, world, sender);
+            entry.handler.execute(ev, world, sender);
         }
     }
 }
 
-struct HandlerEntry<W> {
+struct HandlerEntry<T, W> {
     priority: i32,
-    handler: Box<dyn EventHandler<W>>,
+    handler: EventHandler<T, W>,
 }
 
 mod tests {
