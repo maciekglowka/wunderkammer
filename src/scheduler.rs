@@ -1,7 +1,6 @@
 use std::{
     any::{Any, TypeId},
     collections::{HashMap, VecDeque},
-    marker::PhantomData,
 };
 
 pub struct Scheduler<W> {
