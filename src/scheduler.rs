@@ -82,11 +82,11 @@ impl<'a> SchedulerContext<'a> {
     }
 }
 
-pub struct EventHandler<T, W>(
+pub struct CommandHandler<T, W>(
     Box<dyn Fn(&mut T, &mut W, &mut SchedulerContext) -> Result<(), CommandError>>,
 );
 
-impl<T, W> EventHandler<T, W> {
+impl<T, W> CommandHandler<T, W> {
     fn execute(
         &self,
         event: &mut T,
@@ -115,7 +115,7 @@ impl fmt::Display for CommandError {
 impl Error for CommandError {}
 
 pub trait IntoHandler<T, W, M> {
-    fn handler(self) -> EventHandler<T, W>;
+    fn handler(self) -> CommandHandler<T, W>;
 }
 
 impl<F, T, W> IntoHandler<T, W, EventOnlyMarker> for F
@@ -123,9 +123,9 @@ where
     F: Fn(&mut T) -> Result<(), CommandError> + 'static,
     T: 'static,
 {
-    fn handler(self) -> EventHandler<T, W> {
+    fn handler(self) -> CommandHandler<T, W> {
         let wrapper = move |a: &mut T, _: &mut W, _: &mut SchedulerContext| self(a);
-        EventHandler::<T, W>(Box::new(wrapper))
+        CommandHandler::<T, W>(Box::new(wrapper))
     }
 }
 
@@ -134,9 +134,9 @@ where
     F: Fn(&mut T, &mut W) -> Result<(), CommandError> + 'static,
     T: 'static,
 {
-    fn handler(self) -> EventHandler<T, W> {
+    fn handler(self) -> CommandHandler<T, W> {
         let wrapper = move |a: &mut T, w: &mut W, _: &mut SchedulerContext| self(a, w);
-        EventHandler::<T, W>(Box::new(wrapper))
+        CommandHandler::<T, W>(Box::new(wrapper))
     }
 }
 
@@ -145,9 +145,9 @@ where
     F: Fn(&mut T, &mut SchedulerContext) -> Result<(), CommandError> + 'static,
     T: 'static,
 {
-    fn handler(self) -> EventHandler<T, W> {
+    fn handler(self) -> CommandHandler<T, W> {
         let wrapper = move |a: &mut T, _: &mut W, c: &mut SchedulerContext| self(a, c);
-        EventHandler::<T, W>(Box::new(wrapper))
+        CommandHandler::<T, W>(Box::new(wrapper))
     }
 }
 
@@ -156,9 +156,9 @@ where
     F: Fn(&mut T, &mut W, &mut SchedulerContext) -> Result<(), CommandError> + 'static,
     T: 'static,
 {
-    fn handler(self) -> EventHandler<T, W> {
+    fn handler(self) -> CommandHandler<T, W> {
         let wrapper = move |a: &mut T, w: &mut W, c: &mut SchedulerContext| self(a, w, c);
-        EventHandler::<T, W>(Box::new(wrapper))
+        CommandHandler::<T, W>(Box::new(wrapper))
     }
 }
 
@@ -214,7 +214,7 @@ impl<T: 'static, W: 'static> HandlerSetErased<W> for HandlerSet<T, W> {
 
 struct HandlerEntry<T, W> {
     priority: i32,
-    handler: EventHandler<T, W>,
+    handler: CommandHandler<T, W>,
 }
 
 mod tests {

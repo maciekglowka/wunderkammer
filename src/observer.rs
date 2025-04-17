@@ -34,7 +34,6 @@ impl<T> ObservableQueue<T> {
     pub fn subscribe(&mut self) -> Observer<T> {
         let front = Arc::new(AtomicUsize::new(self.queue.read().unwrap().len()));
         self.observers.push(Arc::downgrade(&front));
-        let q = self.queue.clone();
         Observer {
             front,
             queue: Arc::downgrade(&self.queue),
