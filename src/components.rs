@@ -12,7 +12,6 @@ pub trait ComponentSet {
     /// despawn all the entity's components
     fn despawn(&mut self, entity: Entity);
     /// get component entities by name (e.g. for scripting)
-    #[cfg(feature = "string")]
     fn entities_str(&self, component: &str) -> std::collections::HashSet<Entity>;
 }
 

@@ -70,7 +70,7 @@ pub struct Observer<T> {
     queue: Weak<RwLock<VecDeque<T>>>,
 }
 impl<T> Observer<T> {
-    pub fn map_next<U>(&self, f: impl Fn(&T) -> U) -> Option<U> {
+    pub fn map_next<U>(&self, f: impl FnOnce(&T) -> U) -> Option<U> {
         let r = self.queue.upgrade()?;
         let queue = r.read().unwrap();
 

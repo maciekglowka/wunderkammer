@@ -13,7 +13,6 @@ categories = ["game-development", "data-structures"]
 
 [features]
 serialize = ["dep:serde"]
-string = []
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"], optional = true }

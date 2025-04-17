@@ -5,8 +5,12 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
-use crate::observer::{ObservableQueue, Observer};
+use crate::{
+    markers,
+    observer::{ObservableQueue, Observer},
+};
 
+#[derive(Default)]
 pub struct Scheduler<W> {
     handlers: HashMap<TypeId, Box<dyn HandlerSetErased<W>>>,
     queue: VecDeque<Vec<ScheduledCommand>>,
@@ -37,31 +41,36 @@ impl<W: 'static> Scheduler<W> {
         self.queue
             .push_back(vec![ScheduledCommand(TypeId::of::<T>(), Box::new(event))]);
     }
-    pub fn step(&mut self, world: &mut W) {
+    pub fn step(&mut self, world: &mut W) -> bool {
         if let Some(epoch) = self.queue.pop_front() {
             for command in epoch {
                 if let Some(set) = self.handlers.get_mut(&command.0) {
                     set.handle(command.1, world, &mut self.sender);
                 }
             }
+        } else {
+            return false;
         }
+
         if !self.sender.0.is_empty() {
             self.queue.push_back(self.sender.0.drain(..).collect());
         }
+        true
     }
-    pub fn observe<T: 'static>(&mut self) -> Option<Observer<T>> {
+    pub fn observe<T: 'static>(&mut self) -> Observer<T> {
         let observer = self
             .handlers
             .entry(TypeId::of::<T>())
             .or_insert(Box::new(HandlerSet::<T, W>::new()))
             .observe();
-        let boxed: Box<Observer<T>> = observer.downcast().ok()?;
-        Some(*boxed)
+        let boxed: Box<Observer<T>> = observer.downcast().unwrap();
+        *boxed
     }
 }
 
 struct ScheduledCommand(TypeId, Box<dyn Any>);
 
+#[derive(Default)]
 pub struct Sender(Vec<ScheduledCommand>);
 impl Sender {
     fn new() -> Self {
@@ -118,7 +127,7 @@ pub trait IntoHandler<T, W, M> {
     fn handler(self) -> CommandHandler<T, W>;
 }
 
-impl<F, T, W> IntoHandler<T, W, EventOnlyMarker> for F
+impl<F, T, W> IntoHandler<T, W, markers::EventOnlyMarker> for F
 where
     F: Fn(&mut T) -> Result<(), CommandError> + 'static,
     T: 'static,
@@ -129,7 +138,7 @@ where
     }
 }
 
-impl<F, T, W> IntoHandler<T, W, WithWorldMarker> for F
+impl<F, T, W> IntoHandler<T, W, markers::WithWorldMarker> for F
 where
     F: Fn(&mut T, &mut W) -> Result<(), CommandError> + 'static,
     T: 'static,
@@ -140,7 +149,7 @@ where
     }
 }
 
-impl<F, T, W> IntoHandler<T, W, WithContextMarker> for F
+impl<F, T, W> IntoHandler<T, W, markers::WithContextMarker> for F
 where
     F: Fn(&mut T, &mut SchedulerContext) -> Result<(), CommandError> + 'static,
     T: 'static,
@@ -151,7 +160,7 @@ where
     }
 }
 
-impl<F, T, W> IntoHandler<T, W, WithWorldAndContextMarker> for F
+impl<F, T, W> IntoHandler<T, W, markers::WithWorldAndContextMarker> for F
 where
     F: Fn(&mut T, &mut W, &mut SchedulerContext) -> Result<(), CommandError> + 'static,
     T: 'static,
@@ -161,12 +170,6 @@ where
         CommandHandler::<T, W>(Box::new(wrapper))
     }
 }
-
-// Markers
-struct EventOnlyMarker;
-struct WithWorldMarker;
-struct WithContextMarker;
-struct WithWorldAndContextMarker;
 
 trait HandlerSetErased<W> {
     fn add_handler(&mut self, handler: Box<dyn Any>, priority: i32);

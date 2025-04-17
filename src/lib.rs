@@ -1,6 +1,7 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))]
 pub(crate) mod components;
 pub(crate) mod entity;
+pub mod markers;
 pub(crate) mod observer;
 pub(crate) mod query;
 pub(crate) mod scheduler;

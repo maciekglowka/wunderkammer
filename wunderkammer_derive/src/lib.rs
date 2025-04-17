@@ -22,7 +22,6 @@ fn impl_component_set(ast: &syn::DeriveInput) -> TokenStream {
                 #(self.#members_despawn.remove(entity);)*
             }
 
-            #[cfg(feature = "string")]
             fn entities_str(&self, component: &str) -> std::collections::HashSet<Entity> {
                 match component {
                     #(stringify!(#members_entities) => self.#members_entities.entities(),)*
