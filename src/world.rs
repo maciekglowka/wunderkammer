@@ -21,6 +21,12 @@ impl<C: ComponentSet, R: Default> WorldStorage<C, R> {
         self.components.despawn(entity);
         self.entities.despawn(entity);
     }
+    pub fn is_valid(&self, entity: Entity) -> bool {
+        self.entities.is_valid(entity)
+    }
+    pub fn entities(&self) -> impl Iterator<Item = Entity> + use<'_, C, R> {
+        self.entities.all()
+    }
 }
 
 #[cfg(test)]

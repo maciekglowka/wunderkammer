@@ -201,7 +201,6 @@ mod tests {
         let mut storage = ComponentStorage::default();
         let entity_0 = Entity { id: 0, version: 0 };
         let entity_1 = Entity { id: 1, version: 0 };
-        let entity_2 = Entity { id: 2, version: 0 };
         storage.insert(entity_0, "VALUE0");
         storage.insert(entity_1, "VALUE1");
         storage.remove(entity_0);

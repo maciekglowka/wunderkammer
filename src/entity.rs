@@ -14,7 +14,7 @@ pub struct Entity {
 /// EntityStorage responsible for spawning and despawning of the entities.
 /// Entity id's are recycled internally and versioned to avoid dead entity
 /// usage.
-/// ```rust
+/// ```ignore
 /// use wunderkammer::prelude::*;
 /// let mut storage = EntityStorage::default();
 /// let a = storage.spawn();
@@ -33,13 +33,15 @@ pub struct EntityStorage {
     first_recycled: Option<IdSize>,
 }
 impl EntityStorage {
-    pub fn spawn(&mut self) -> Entity {
+    /// Spawn an Entity
+    pub(crate) fn spawn(&mut self) -> Entity {
         if let Some(entity) = self.recycle() {
             return entity;
         }
         self.spawn_new()
     }
-    pub fn despawn(&mut self, entity: Entity) {
+    /// Despawn Entity from the storage
+    pub(crate) fn despawn(&mut self, entity: Entity) {
         if self.entities[entity.id as usize].version != entity.version {
             // already despawned!
             return;
@@ -55,6 +57,21 @@ impl EntityStorage {
         // now this one is the prev_recycled
         self.last_recycled = Some(entity.id);
     }
+    /// Validates the given entity
+    pub(crate) fn is_valid(&self, entity: Entity) -> bool {
+        let Some(existing) = self.entities.get(entity.id as usize) else {
+            return false;
+        };
+        existing.version == entity.version
+            && existing.id == entity.id
+            && self.last_recycled != Some(entity.id)
+            && self.first_recycled != Some(entity.id)
+    }
+    /// Iterate through valid entities
+    pub(crate) fn all(&self) -> impl Iterator<Item = Entity> + use<'_> {
+        self.entities.iter().filter(|e| self.is_valid(**e)).copied()
+    }
+
     /// Spawns a fresh entity, with version 0
     fn spawn_new(&mut self) -> Entity {
         let id = self.entities.len();
@@ -105,7 +122,7 @@ mod tests {
         let mut storage = EntityStorage::default();
         let entities = (0..5).map(|_| storage.spawn_new()).collect::<Vec<_>>();
         storage.despawn(entities[2]);
-        assert_eq!(false, storage.entities.contains(&entities[2]));
+        assert!(!storage.entities.contains(&entities[2]));
     }
 
     #[test]
@@ -160,5 +177,61 @@ mod tests {
 
         let d = storage.spawn();
         assert_eq!(d.id, 2);
+    }
+
+    #[test]
+    fn is_valid_not_spawned() {
+        let mut storage = EntityStorage::default();
+        for _ in 0..10 {
+            storage.spawn();
+        }
+
+        assert!(!storage.is_valid(Entity { id: 11, version: 0 }));
+    }
+
+    #[test]
+    fn is_valid_despawned() {
+        let mut storage = EntityStorage::default();
+        for _ in 0..10 {
+            storage.spawn();
+        }
+
+        let entity = Entity { id: 5, version: 0 };
+        assert!(storage.is_valid(entity));
+        storage.despawn(entity);
+        assert!(!storage.is_valid(entity));
+    }
+
+    #[test]
+    fn is_valid_recycled() {
+        let mut storage = EntityStorage::default();
+        for _ in 0..10 {
+            storage.spawn();
+        }
+
+        let entity = Entity { id: 5, version: 0 };
+        assert!(storage.is_valid(entity));
+        storage.despawn(entity);
+        let recycled = storage.spawn();
+        assert_eq!(Entity { id: 5, version: 1 }, recycled);
+        assert!(!storage.is_valid(entity));
+    }
+
+    #[test]
+    fn all() {
+        let mut storage = EntityStorage::default();
+        for _ in 0..10 {
+            storage.spawn();
+        }
+
+        storage.despawn(Entity { id: 1, version: 0 });
+        storage.despawn(Entity { id: 5, version: 0 });
+        assert_eq!(8, storage.all().collect::<Vec<_>>().len());
+
+        // recycle
+        storage.spawn();
+        assert_eq!(9, storage.all().collect::<Vec<_>>().len());
+        storage.despawn(Entity { id: 1, version: 1 });
+        assert_eq!(8, storage.all().collect::<Vec<_>>().len());
     }
 }
