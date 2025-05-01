@@ -64,6 +64,14 @@ impl<T> ObservableQueue<T> {
         let _ = queue.drain(..new_front);
     }
 }
+impl<T> Default for ObservableQueue<T> {
+    fn default() -> Self {
+        Self {
+            queue: Arc::new(RwLock::new(VecDeque::new())),
+            observers: Vec::new(),
+        }
+    }
+}
 
 pub struct Observer<T> {
     front: Arc<AtomicUsize>,

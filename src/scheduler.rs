@@ -37,9 +37,16 @@ impl<W: 'static> Scheduler<W> {
             .or_insert(Box::new(HandlerSet::<T, W>::new()))
             .add_handler(Box::new(handler.handler()), priority);
     }
-    pub fn send<T: 'static>(&mut self, event: T) {
+    pub fn send<T: 'static>(&mut self, command: T) {
         self.queue
-            .push_back(vec![ScheduledCommand(TypeId::of::<T>(), Box::new(event))]);
+            .push_back(vec![ScheduledCommand(TypeId::of::<T>(), Box::new(command))]);
+    }
+    pub fn send_many<T: 'static>(&mut self, commands: Vec<T>) {
+        let commands = commands
+            .into_iter()
+            .map(|e| ScheduledCommand(TypeId::of::<T>(), Box::new(e)))
+            .collect::<Vec<_>>();
+        self.queue.push_back(commands);
     }
     pub fn step(&mut self, world: &mut W) -> bool {
         if let Some(epoch) = self.queue.pop_front() {
@@ -201,6 +208,9 @@ impl<T: 'static, W: 'static> HandlerSetErased<W> for HandlerSet<T, W> {
     fn handle(&mut self, event: Box<dyn Any>, world: &mut W, sender: &mut Sender) {
         let mut ev = event.downcast::<T>().unwrap();
         let mut cx = SchedulerContext { sender };
+        #[cfg(feature = "log")]
+        log::debug!("Executing handlers for: {}", std::any::type_name::<T>());
+
         for entry in self.handlers.iter() {
             match entry.handler.execute(ev.as_mut(), world, &mut cx) {
                 Ok(_) => (),
