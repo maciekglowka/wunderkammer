@@ -482,7 +482,7 @@ mod tests {
 
         let mut world = World(0);
 
-        let damage_observer = scheduler.observe::<Damage>().unwrap();
+        let damage_observer = scheduler.observe::<Damage>();
 
         scheduler.send(Attack(3));
 
@@ -506,7 +506,7 @@ mod tests {
         }
 
         let mut scheduler = Scheduler::new();
-        let attack_observer = scheduler.observe::<Attack>().unwrap();
+        let attack_observer = scheduler.observe::<Attack>();
 
         scheduler.add_system(attack_handler);
 
@@ -539,7 +539,7 @@ mod tests {
         scheduler.send(Attack(3));
         scheduler.step(&mut world);
 
-        let attack_observer = scheduler.observe::<Attack>().unwrap();
+        let attack_observer = scheduler.observe::<Attack>();
         assert_eq!(None, attack_observer.map_next(|a| a.0));
     }
 }
