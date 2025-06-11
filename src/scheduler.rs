@@ -37,10 +37,12 @@ impl<W: 'static> Scheduler<W> {
             .or_insert(Box::new(HandlerSet::<T, W>::new()))
             .add_handler(Box::new(handler.handler()), priority);
     }
+    /// Send a command into it's own epoch.
     pub fn send<T: 'static>(&mut self, command: T) {
         self.queue
             .push_back(vec![ScheduledCommand(TypeId::of::<T>(), Box::new(command))]);
     }
+    /// Send a group of commands into a single epoch.
     pub fn send_many<T: 'static>(&mut self, commands: Vec<T>) {
         let commands = commands
             .into_iter()
@@ -59,9 +61,12 @@ impl<W: 'static> Scheduler<W> {
             return false;
         }
 
+        // Handle immediate results
         if !self.sender.0.is_empty() {
-            self.queue.push_back(self.sender.0.drain(..).collect());
+            // Immediate results share the epoch
+            self.queue.push_front(self.sender.0.drain(..).collect());
         }
+
         true
     }
     pub fn observe<T: 'static>(&mut self) -> Observer<T> {
@@ -81,8 +86,11 @@ struct ScheduledCommand(TypeId, Box<dyn Any>);
 pub struct Sender(Vec<ScheduledCommand>);
 impl Sender {
     fn new() -> Self {
-        Self(Vec::new())
+        Self::default()
     }
+    /// Sends a resulting command.
+    /// All commands sent during the same epoch, will be executed together in
+    /// the next epoch - regardless of their type.
     pub fn send<T: 'static>(&mut self, event: T) {
         self.0
             .push(ScheduledCommand(TypeId::of::<T>(), Box::new(event)));
@@ -253,7 +261,6 @@ mod tests {
         scheduler.step(&mut world);
         // No side effects to test
     }
-
     #[test]
     fn test_handler_with_world() {
         // Event.
