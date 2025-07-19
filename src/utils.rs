@@ -1,6 +1,6 @@
 #[macro_export]
 macro_rules! insert {
-    ($world:expr, $component:ident, $entity:expr, $value:expr) => {
+    ($world:expr,  $entity:expr, $component:ident, $value:expr) => {
         if $world.is_valid($entity) {
             $world.components.$component.insert($entity, $value);
         }
