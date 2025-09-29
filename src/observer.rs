@@ -231,4 +231,37 @@ mod tests {
         assert!(queue.observers.is_empty());
         assert!(queue.queue.read().unwrap().is_empty());
     }
+
+    #[test]
+    fn test_multithreaded_access() {
+        use std::thread;
+
+        let mut queue = ObservableQueue::new();
+        let observer = queue.subscribe();
+
+        let handles = (0..10)
+            .map(|i| {
+                let mut queue_clone = ObservableQueue {
+                    queue: queue.queue.clone(),
+                    observers: queue.observers.clone(),
+                };
+                let observer_clone = Observer {
+                    front: observer.front.clone(),
+                    queue: observer.queue.clone(),
+                };
+                thread::spawn(move || {
+                    for j in 0..10 {
+                        queue_clone.push(i * 10 + j);
+                        if let Some(value) = observer_clone.next() {
+                            assert_eq!(value, i * 10 + j);
+                        }
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
 }

@@ -78,6 +78,9 @@ impl<W: 'static> Scheduler<W> {
         let boxed: Box<Observer<T>> = observer.downcast().unwrap();
         *boxed
     }
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
 }
 
 struct ScheduledCommand(TypeId, Box<dyn Any>);
