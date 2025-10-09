@@ -100,7 +100,7 @@ fn setup() -> World {
         Some(0.),
         &mut world,
     );
-    world.components.ship.insert(ship_entity, ());
+    insert!(world, ship, ship_entity, ());
 
     // spawn asteroids
     spawn_initial_asteroids(&mut world);
@@ -126,22 +126,24 @@ fn spawn_initial_asteroids(world: &mut World) {
 
 fn spawn_asteroid(pos: Vec2, vel: Vec2, sides: u8, size: f32, world: &mut World) {
     let entity = spawn_object(pos, vel, Some(0.), world);
-    world.components.asteroid.insert(
+    insert!(
+        world,
+        asteroid,
         entity,
         Asteroid {
             rot_speed: rand::gen_range(-2., 2.),
             sides,
             size,
-        },
+        }
     );
 }
 
 fn spawn_object(pos: Vec2, vel: Vec2, rot: Option<f32>, world: &mut World) -> Entity {
     let entity = world.spawn();
-    world.components.pos.insert(entity, pos);
-    world.components.vel.insert(entity, vel);
+    insert!(world, pos, entity, pos);
+    insert!(world, vel, entity, vel);
     if let Some(rot) = rot {
-        world.components.rot.insert(entity, rot);
+        insert!(world, rot, entity, rot);
     }
     entity
 }
@@ -183,10 +185,7 @@ fn shoot(frame_t: f64, world: &mut World) {
     };
     let rot_vec = Vec2::new(rot.sin(), -rot.cos());
     let entity = spawn_object(pos + rot_vec * SHIP_HEIGHT / 2., rot_vec * 7., None, world);
-    world
-        .components
-        .bullet
-        .insert(entity, Bullet { shot_at: frame_t });
+    insert!(world, bullet, entity, Bullet { shot_at: frame_t });
     world.resources.last_shot = frame_t;
 }
 

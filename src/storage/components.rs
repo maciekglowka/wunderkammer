@@ -34,7 +34,9 @@ impl<T> ComponentStorage<T> {
     }
     // Insert a new component for the entity.
     // Overwrite if already exists.
-    pub fn insert(&mut self, entity: Entity, value: T) {
+    // Since it cannot validate the entity,
+    // it is recommended to use `insert!` macro that calls it internally.
+    pub fn __insert(&mut self, entity: Entity, value: T) {
         // check if replacement
         if let Some(index) = self.get_dense_index(&entity) {
             self.values[index] = value;
