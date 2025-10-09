@@ -1,7 +1,7 @@
 /// Base query that extracts matching entities from the World struct.
 #[macro_export]
 macro_rules! query {
-    ($world:expr, With($($components:ident)+), Without($($without:ident),+)) => {
+    ($world:expr, With($($components:ident), +), Without($($without:ident),+)) => {
         query!($world, With($($components),+))
             $(.filter(|e| $world.components.$without.get(**e).is_none()))+
     };
@@ -14,23 +14,38 @@ macro_rules! query {
     }};
 }
 
-/// Helper query that allows to execute a given closure on each matching entity
-/// and it's components.
+/// Query returning an immutable iterator over matching entities with their
+/// components.
 #[macro_export]
-macro_rules! query_execute {
-    ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
-        query!($world, With($($component),+) $(, Without($($without),+))?)
-        // after querying should be always safe to unwrap
-            .for_each(|e| $f( *e, $($world.components.$component.get(*e).unwrap()),+ ))
+macro_rules! query_iter {
+    ($world:expr, With($($components:ident), +), Without($($without:ident),+)) => {
+        query_iter!($world, With($($components),+))
+            $(.filter(|a| $world.components.$without.get(a.0).is_none()))+
+    };
+    ($world:expr, With($component:ident)) => {
+        $world
+            .components
+            .$component
+            .entities_iter()
+            .map(|&e| (e, $world.components.$component.get(e).unwrap()))
+    };
+    ($world:expr, With($component:ident, $($components:ident),+)) => {{
+        query_iter!($world, With($component))
+            .filter_map(|(e, c)| Some(
+                (
+                    e,
+                    c,
+                    $( $world.components.$components.get(e)? )+,
+                )
+            ))
     }};
 }
 
 /// Helper query that allows to execute a mutating closure on each matching
 /// entity and it's components.
 #[macro_export]
-macro_rules! query_execute_mut {
+macro_rules! query_execute {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
-        // let entities = query!($world, $(Without($($without),+),)? With($($component),+));
         query!($world, With($($component),+) $(, Without($($without),+))?)
         // after querying should be always safe to unwrap
             .copied()
@@ -38,19 +53,6 @@ macro_rules! query_execute_mut {
             .iter()
             .for_each(|e| $f( e, $($world.components.$component.get_mut(*e).unwrap()),+ ))
     }};
-}
-
-/// Query returning and immutable iterator over matching entities with their
-/// components.
-#[macro_export]
-macro_rules! query_iter {
-    ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+)) => {
-        // query!($world, $(Without($($without),+),)? With($($component),+))
-        query!($world, With($($component),+) $(, Without($($without),+))?)
-            // .iter()
-            // after querying should be always safe to unwrap
-            .map(|e| ( *e, $($world.components.$component.get(*e).unwrap()),+ ))
-    }
 }
 
 #[cfg(test)]
@@ -167,6 +169,12 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&d));
+
+        let entities = query!(w, With(attack, name), Without(health))
+            .copied()
+            .collect::<Vec<_>>();
+        assert_eq!(entities.len(), 1);
+        assert!(entities.contains(&c));
     }
 
     #[test]
@@ -218,124 +226,6 @@ mod tests {
     }
 
     #[test]
-    fn query_execute() {
-        #[derive(ComponentSet, Default)]
-        struct C {
-            pub health: ComponentStorage<u32>,
-            pub name: ComponentStorage<String>,
-        }
-        #[derive(Default)]
-        struct R;
-        let mut w = WorldStorage::<C, R>::default();
-        let a = w.spawn();
-        let b = w.spawn();
-        let c = w.spawn();
-
-        w.components.health.insert(a, 15);
-        w.components.name.insert(a, "Fifteen".to_string());
-
-        w.components.health.insert(b, 16);
-
-        w.components.health.insert(c, 17);
-        w.components.name.insert(c, "Seventeen".to_string());
-
-        let mut v = Vec::new();
-        query_execute!(w, With(health, name), |_, h, n| { v.push((h, n)) });
-        assert_eq!(v.len(), 2);
-
-        // the order is not deterministic due to HashSet usage
-        v.sort();
-        assert_eq!(*v[0].0, 15);
-        assert_eq!(v[0].1, "Fifteen");
-        assert_eq!(*v[1].0, 17);
-        assert_eq!(v[1].1, "Seventeen");
-    }
-
-    #[test]
-    fn query_execute_without() {
-        #[derive(ComponentSet, Default)]
-        struct C {
-            pub health: ComponentStorage<u32>,
-            pub name: ComponentStorage<String>,
-        }
-        #[derive(Default)]
-        struct R;
-        let mut w = WorldStorage::<C, R>::default();
-        let a = w.spawn();
-        let b = w.spawn();
-        let c = w.spawn();
-
-        w.components.health.insert(a, 15);
-        w.components.name.insert(a, "Fifteen".to_string());
-
-        w.components.health.insert(b, 16);
-
-        w.components.health.insert(c, 17);
-        w.components.name.insert(c, "Seventeen".to_string());
-
-        let mut v = Vec::new();
-        query_execute!(w, Without(name), With(health), |_, h| { v.push(h) });
-        assert_eq!(v.len(), 1);
-        assert_eq!(*v[0], 16);
-    }
-
-    #[test]
-    fn query_execute_mut() {
-        #[derive(ComponentSet, Default)]
-        struct C {
-            pub health: ComponentStorage<u32>,
-            pub name: ComponentStorage<String>,
-        }
-        #[derive(Default)]
-        struct R;
-        let mut w = WorldStorage::<C, R>::default();
-        let a = w.spawn();
-        let b = w.spawn();
-
-        w.components.health.insert(a, 15);
-        w.components.name.insert(a, "Fifteen".to_string());
-
-        w.components.health.insert(b, 17);
-        w.components.name.insert(b, "Seventeen".to_string());
-
-        query_execute_mut!(w, With(health, name), |_, h: &mut u32, n: &mut String| {
-            *h += 1;
-            n.insert(0, '@');
-        });
-
-        assert_eq!(*w.components.health.get(a).unwrap(), 16);
-        assert_eq!(w.components.name.get(a).unwrap(), "@Fifteen");
-        assert_eq!(*w.components.health.get(b).unwrap(), 18);
-        assert_eq!(w.components.name.get(b).unwrap(), "@Seventeen");
-    }
-
-    #[test]
-    fn query_execute_mut_without() {
-        #[derive(ComponentSet, Default)]
-        struct C {
-            pub health: ComponentStorage<u32>,
-            pub name: ComponentStorage<String>,
-        }
-        #[derive(Default)]
-        struct R;
-        let mut w = WorldStorage::<C, R>::default();
-        let a = w.spawn();
-        let b = w.spawn();
-
-        w.components.health.insert(a, 15);
-
-        w.components.health.insert(b, 17);
-        w.components.name.insert(b, "Seventeen".to_string());
-
-        query_execute_mut!(w, Without(name), With(health), |_, h: &mut u32| {
-            *h += 1;
-        });
-
-        assert_eq!(*w.components.health.get(a).unwrap(), 16);
-        assert_eq!(*w.components.health.get(b).unwrap(), 17);
-    }
-
-    #[test]
     fn query_iter() {
         #[derive(ComponentSet, Default)]
         struct C {
@@ -384,9 +274,10 @@ mod tests {
         w.components.strength.insert(b, 2);
         w.components.strength.insert(c, 1);
 
-        let v = query_iter!(w, Without(health), With(strength))
+        let v = query_iter!(w, With(strength), Without(health))
             .map(|(_, s)| s)
             .collect::<Vec<_>>();
+
         assert_eq!(v.len(), 1);
         assert_eq!(*v[0], 2);
     }
@@ -413,11 +304,67 @@ mod tests {
         w.components.strength.insert(b, 2);
         w.components.strength.insert(c, 1);
 
-        let v = query_iter!(w, Without(health, player), With(strength))
+        let v = query_iter!(w, With(strength), Without(health, player))
             .map(|(_, s)| s)
             .collect::<Vec<_>>();
         assert_eq!(v.len(), 1);
         assert_eq!(*v[0], 2);
+    }
+
+    #[test]
+    fn query_execute() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+            pub name: ComponentStorage<String>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+
+        w.components.health.insert(a, 15);
+        w.components.name.insert(a, "Fifteen".to_string());
+
+        w.components.health.insert(b, 17);
+        w.components.name.insert(b, "Seventeen".to_string());
+
+        query_execute!(w, With(health, name), |_, h: &mut u32, n: &mut String| {
+            *h += 1;
+            n.insert(0, '@');
+        });
+
+        assert_eq!(*w.components.health.get(a).unwrap(), 16);
+        assert_eq!(w.components.name.get(a).unwrap(), "@Fifteen");
+        assert_eq!(*w.components.health.get(b).unwrap(), 18);
+        assert_eq!(w.components.name.get(b).unwrap(), "@Seventeen");
+    }
+
+    #[test]
+    fn query_execute_without() {
+        #[derive(ComponentSet, Default)]
+        struct C {
+            pub health: ComponentStorage<u32>,
+            pub name: ComponentStorage<String>,
+        }
+        #[derive(Default)]
+        struct R;
+        let mut w = WorldStorage::<C, R>::default();
+        let a = w.spawn();
+        let b = w.spawn();
+
+        w.components.health.insert(a, 15);
+
+        w.components.health.insert(b, 17);
+        w.components.name.insert(b, "Seventeen".to_string());
+
+        query_execute!(w, Without(name), With(health), |_, h: &mut u32| {
+            *h += 1;
+        });
+
+        assert_eq!(*w.components.health.get(a).unwrap(), 16);
+        assert_eq!(*w.components.health.get(b).unwrap(), 17);
     }
 
     #[test]
@@ -463,7 +410,7 @@ mod tests {
         assert_eq!(npcs.len(), 2);
 
         // apply poison
-        query_execute_mut!(world, With(health, poison), |_, h: &mut u32, _| {
+        query_execute!(world, With(health, poison), |_, h: &mut u32, _| {
             *h = h.saturating_sub(1);
         });
 

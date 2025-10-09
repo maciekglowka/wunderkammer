@@ -11,7 +11,7 @@ pub(crate) mod world;
 
 pub mod prelude {
     use super::*;
-    pub use super::{insert, query, query_execute, query_execute_mut, query_iter};
+    pub use super::{insert, query, query_execute, query_iter};
     pub use components::{ComponentSet, ComponentStorage};
     pub use entity::{Entity, EntityStorage};
     pub use observer::{ObservableQueue, Observer};
