@@ -92,6 +92,7 @@ mod tests {
         #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
+            pub marker: ComponentStorage<()>,
             pub name: ComponentStorage<String>,
         }
         #[derive(Default)]
@@ -103,6 +104,7 @@ mod tests {
 
         w.components.health.insert(a, 15);
         w.components.name.insert(a, "Fifteen".to_string());
+        w.components.marker.insert(a, ());
 
         w.components.health.insert(b, 16);
 
@@ -113,6 +115,11 @@ mod tests {
         assert_eq!(entities.len(), 2);
         assert!(entities.contains(&a));
         assert!(entities.contains(&c));
+
+        let entities = query!(w, With(health, name, marker))
+            .copied()
+            .collect::<Vec<_>>();
+        assert_eq!(entities.len(), 1);
     }
 
     #[test]
@@ -151,6 +158,7 @@ mod tests {
             pub attack: ComponentStorage<u32>,
             pub health: ComponentStorage<u32>,
             pub name: ComponentStorage<String>,
+            pub marker: ComponentStorage<()>,
         }
         #[derive(Default)]
         struct R;
@@ -171,12 +179,18 @@ mod tests {
         w.components.name.insert(c, "Seventeen".to_string());
 
         w.components.name.insert(d, "Eighteen".to_string());
+        w.components.marker.insert(d, ());
 
         let entities = query!(w, With(name), Without(attack, health))
             .copied()
             .collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&d));
+
+        let entities = query!(w, With(name), Without(attack, health, marker))
+            .copied()
+            .collect::<Vec<_>>();
+        assert!(entities.is_empty());
 
         let entities = query!(w, With(attack, name), Without(health))
             .copied()
