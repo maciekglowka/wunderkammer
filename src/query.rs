@@ -1,33 +1,17 @@
 /// Base query that extracts matching entities from the World struct.
 #[macro_export]
 macro_rules! query {
-    ($world:expr, With($($component:ident),+)) => {
-        {
-            let with = [
-                $($world.components.$component.entities()), +
-            ];
-            // won't fail as we match at least one component
-            with.into_iter()
-                .reduce(|acc, h| acc.intersection(&h).copied().collect())
-                .expect("This iterator should never be empty!")
-        }
+    ($world:expr, With($($components:ident)+), Without($($without:ident),+)) => {
+        query!($world, With($($components),+))
+            $(.filter(|e| $world.components.$without.get(**e).is_none()))+
     };
-    ($world:expr, Without($($without:ident),+), With($($component:ident),+)) => {
-        {
-            let with = [
-                $($world.components.$component.entities()), +
-            ];
-            let without = [
-                $($world.components.$without.entities()), +
-            ];
-            // won't fail as we match at least one component
-            let entities = with.into_iter()
-                .reduce(|acc, h| acc.intersection(&h).copied().collect())
-                .expect("This iterator should never be empty!");
-            without.into_iter()
-                .fold(entities, |acc, h| acc.difference(&h).copied().collect())
-        }
+    ($world:expr, With($component:ident)) => {
+        $world.components.$component.entities_iter()
     };
+    ($world:expr, With($component:ident, $($components:ident),+)) => {{
+        query!($world, With($($components),+))
+            .filter(|e| $world.components.$component.get(**e).is_some())
+    }};
 }
 
 /// Helper query that allows to execute a given closure on each matching entity
@@ -35,9 +19,8 @@ macro_rules! query {
 #[macro_export]
 macro_rules! query_execute {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
-        let entities = query!($world, $(Without($($without),+),)? With($($component),+));
+        query!($world, With($($component),+) $(, Without($($without),+))?)
         // after querying should be always safe to unwrap
-        entities.iter()
             .for_each(|e| $f( *e, $($world.components.$component.get(*e).unwrap()),+ ))
     }};
 }
@@ -47,10 +30,13 @@ macro_rules! query_execute {
 #[macro_export]
 macro_rules! query_execute_mut {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
-        let entities = query!($world, $(Without($($without),+),)? With($($component),+));
+        // let entities = query!($world, $(Without($($without),+),)? With($($component),+));
+        query!($world, With($($component),+) $(, Without($($without),+))?)
         // after querying should be always safe to unwrap
-        entities.iter()
-            .for_each(|e| $f( *e, $($world.components.$component.get_mut(*e).unwrap()),+ ))
+            .copied()
+            .collect::<Vec<_>>()
+            .iter()
+            .for_each(|e| $f( e, $($world.components.$component.get_mut(*e).unwrap()),+ ))
     }};
 }
 
@@ -59,8 +45,9 @@ macro_rules! query_execute_mut {
 #[macro_export]
 macro_rules! query_iter {
     ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+)) => {
-        query!($world, $(Without($($without),+),)? With($($component),+))
-            .iter()
+        // query!($world, $(Without($($without),+),)? With($($component),+))
+        query!($world, With($($component),+) $(, Without($($without),+))?)
+            // .iter()
             // after querying should be always safe to unwrap
             .map(|e| ( *e, $($world.components.$component.get(*e).unwrap()),+ ))
     }
@@ -85,7 +72,7 @@ mod tests {
         w.components.health.insert(entity, 15);
         w.components.name.insert(entity, "Fifteen".to_string());
 
-        let entities = query!(w, With(health, name));
+        let entities = query!(w, With(health, name)).copied().collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&entity));
     }
@@ -112,7 +99,7 @@ mod tests {
         w.components.health.insert(c, 17);
         w.components.name.insert(c, "Seventeen".to_string());
 
-        let entities = query!(w, With(health, name));
+        let entities = query!(w, With(health, name)).copied().collect::<Vec<_>>();
         assert_eq!(entities.len(), 2);
         assert!(entities.contains(&a));
         assert!(entities.contains(&c));
@@ -140,7 +127,9 @@ mod tests {
         w.components.health.insert(c, 17);
         w.components.name.insert(c, "Seventeen".to_string());
 
-        let entities = query!(w, Without(name), With(health));
+        let entities = query!(w, With(health), Without(name))
+            .copied()
+            .collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&b));
     }
@@ -173,7 +162,9 @@ mod tests {
 
         w.components.name.insert(d, "Eighteen".to_string());
 
-        let entities = query!(w, Without(attack, health), With(name));
+        let entities = query!(w, With(name), Without(attack, health))
+            .copied()
+            .collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&d));
     }
@@ -194,7 +185,7 @@ mod tests {
         w.components.health.insert(entity_keep, 25);
         w.despawn(entity);
 
-        let entities = query!(w, With(health));
+        let entities = query!(w, With(health)).copied().collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&entity_keep));
     }
@@ -220,7 +211,7 @@ mod tests {
         assert_eq!(entity.id, entity_recycle.id);
         assert_ne!(entity.version, entity_recycle.version);
 
-        let entities = query!(w, With(health));
+        let entities = query!(w, With(health)).copied().collect::<Vec<_>>();
         assert_eq!(entities.len(), 2);
         assert!(entities.contains(&entity_keep));
         assert!(entities.contains(&entity_recycle));
@@ -468,7 +459,7 @@ mod tests {
         world.components.strength.insert(serpent, 2);
 
         // find matching entities, returns HashSet<Entity>
-        let npcs = query!(world, Without(player), With(health));
+        let npcs = query!(world, With(health), Without(player)).collect::<Vec<_>>();
         assert_eq!(npcs.len(), 2);
 
         // apply poison
@@ -482,7 +473,7 @@ mod tests {
 
         // heal player
         let _ = world.components.poison.remove(player);
-        let poisoned = query!(world, With(poison));
+        let poisoned = query!(world, With(poison)).collect::<Vec<_>>();
         assert_eq!(poisoned.len(), 1);
 
         // use resource

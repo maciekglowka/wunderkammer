@@ -450,7 +450,7 @@ mod tests {
             world.0 = 10;
             Ok(())
         }
-        fn shield(_: &mut Attack, cx: &mut SchedulerContext) -> Result<(), CommandError> {
+        fn shield(_: &mut Attack, _cx: &mut SchedulerContext) -> Result<(), CommandError> {
             Err(CommandError::Break)
         }
 

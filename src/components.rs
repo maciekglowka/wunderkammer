@@ -34,6 +34,9 @@ impl<T> ComponentStorage<T> {
     pub fn entities(&self) -> HashSet<Entity> {
         HashSet::from_iter(self.dense.iter().copied())
     }
+    pub fn entities_iter(&self) -> impl Iterator<Item = &Entity> {
+        self.dense.iter()
+    }
     // Insert a new component for the entity.
     // Overwrite if already exists.
     pub fn insert(&mut self, entity: Entity, value: T) {
