@@ -1,7 +1,7 @@
 #[cfg(feature = "serialize")]
 use serde::{Deserialize, Serialize};
 
-use crate::entity::{Entity, IdSize};
+use super::entity::{Entity, IdSize};
 const TOMBSTONE: IdSize = IdSize::MAX;
 
 /// Base trait for the `components` world field.

@@ -5,10 +5,10 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
-use crate::{
-    markers,
-    observer::{ObservableQueue, Observer},
-};
+pub(crate) mod markers;
+pub(crate) mod observer;
+
+use observer::{ObservableQueue, Observer};
 
 #[derive(Default)]
 pub struct Scheduler<W> {
