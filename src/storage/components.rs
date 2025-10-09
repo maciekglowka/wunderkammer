@@ -109,7 +109,7 @@ mod tests {
     fn insert_first() {
         let mut storage = ComponentStorage::default();
         let entity = Entity { id: 0, version: 0 };
-        storage.insert(entity, "VALUE");
+        storage.__insert(entity, "VALUE");
 
         assert_eq!(storage.dense.len(), 1);
         assert_eq!(storage.values.len(), 1);
@@ -121,11 +121,11 @@ mod tests {
         let mut storage = ComponentStorage::default();
         for i in 0..5 {
             let entity = Entity { id: i, version: 0 };
-            storage.insert(entity, format!("VALUE{}", i));
+            storage.__insert(entity, format!("VALUE{}", i));
         }
 
         let entity = Entity { id: 2, version: 0 };
-        storage.insert(entity, "VALUE_NEW".to_string());
+        storage.__insert(entity, "VALUE_NEW".to_string());
 
         assert_eq!(storage.dense.len(), 5);
         assert_eq!(storage.values.len(), 5);
@@ -141,7 +141,7 @@ mod tests {
                 continue;
             }
             let entity = Entity { id: i, version: 0 };
-            storage.insert(entity, 10 * i);
+            storage.__insert(entity, 10 * i);
         }
 
         assert_eq!(storage.dense.len(), 5);
@@ -163,7 +163,7 @@ mod tests {
     fn contains() {
         let mut storage = ComponentStorage::default();
         let entity = Entity { id: 3, version: 0 };
-        storage.insert(entity, "VALUE");
+        storage.__insert(entity, "VALUE");
         assert_eq!(storage.get_dense_index(&entity), Some(0));
     }
 
@@ -171,7 +171,7 @@ mod tests {
     fn does_not_contain() {
         let mut storage = ComponentStorage::default();
         let entity = Entity { id: 3, version: 0 };
-        storage.insert(entity, "VALUE");
+        storage.__insert(entity, "VALUE");
         let other = Entity { id: 1, version: 0 };
         assert_eq!(storage.get_dense_index(&other), None);
     }
@@ -180,7 +180,7 @@ mod tests {
     fn does_not_contain_exceed_index() {
         let mut storage = ComponentStorage::default();
         let entity = Entity { id: 3, version: 0 };
-        storage.insert(entity, "VALUE");
+        storage.__insert(entity, "VALUE");
         let other = Entity { id: 10, version: 0 };
         assert_eq!(storage.get_dense_index(&other), None);
     }
@@ -189,7 +189,7 @@ mod tests {
     fn remove_single() {
         let mut storage = ComponentStorage::default();
         let entity = Entity { id: 0, version: 0 };
-        storage.insert(entity, "VALUE");
+        storage.__insert(entity, "VALUE");
         storage.remove(entity);
 
         assert_eq!(storage.dense.len(), 0);
@@ -202,12 +202,12 @@ mod tests {
         let mut storage = ComponentStorage::default();
         let entity_0 = Entity { id: 0, version: 0 };
         let entity_1 = Entity { id: 1, version: 0 };
-        storage.insert(entity_0, "VALUE0");
-        storage.insert(entity_1, "VALUE1");
+        storage.__insert(entity_0, "VALUE0");
+        storage.__insert(entity_1, "VALUE1");
         storage.remove(entity_0);
 
         let entity_0r = Entity { id: 0, version: 1 };
-        storage.insert(entity_0r, "VALUE0r");
+        storage.__insert(entity_0r, "VALUE0r");
 
         assert_eq!(storage.dense.len(), 2);
         assert!(!storage
@@ -221,7 +221,7 @@ mod tests {
         let mut storage = ComponentStorage::default();
         for i in 0..10 {
             let entity = Entity { id: i, version: 0 };
-            storage.insert(entity, 10 * i);
+            storage.__insert(entity, 10 * i);
         }
         assert_eq!(storage.dense.len(), 10);
         assert_eq!(storage.values.len(), 10);
@@ -252,7 +252,7 @@ mod tests {
     fn get_wrong_version() {
         let mut storage = ComponentStorage::default();
         let entity = Entity { id: 0, version: 1 };
-        storage.insert(entity, "VALUE");
+        storage.__insert(entity, "VALUE");
 
         assert_eq!(storage.get(&Entity { id: 0, version: 0 }), None);
     }
@@ -261,7 +261,7 @@ mod tests {
     fn get_wrong_id() {
         let mut storage = ComponentStorage::default();
         let entity = Entity { id: 3, version: 1 };
-        storage.insert(entity, "VALUE");
+        storage.__insert(entity, "VALUE");
 
         assert_eq!(storage.get(&Entity { id: 0, version: 1 }), None);
     }

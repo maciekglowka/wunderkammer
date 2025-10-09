@@ -3,14 +3,14 @@
 macro_rules! query {
     ($world:expr, With($($components:ident), +), Without($($without:ident),+)) => {
         query!($world, With($($components),+))
-            $(.filter(|&e| $world.components.$without.get(e).is_none()))+
+            $(.filter(|&e| $world.cmp.$without.get(e).is_none()))+
     };
     ($world:expr, With($component:ident)) => {
-        $world.components.$component.entities()
+        $world.cmp.$component.entities()
     };
     ($world:expr, With($component:ident, $($components:ident),+)) => {{
         query!($world, With($($components),+))
-            .filter(|&e| $world.components.$component.get(e).is_some())
+            .filter(|&e| $world.cmp.$component.get(e).is_some())
     }};
 }
 
@@ -20,14 +20,14 @@ macro_rules! query {
 macro_rules! query_iter {
     ($world:expr, With($($components:ident), +), Without($($without:ident),+)) => {
         query_iter!($world, With($($components),+))
-            $(.filter(|a| $world.components.$without.get(&a.0).is_none()))+
+            $(.filter(|a| $world.cmp.$without.get(&a.0).is_none()))+
     };
     ($world:expr, With($component:ident)) => {
         $world
-            .components
+            .cmp
             .$component
             .entities()
-            .map(|&e| (e, $world.components.$component.get(&e).unwrap()))
+            .map(|&e| (e, $world.cmp.$component.get(&e).unwrap()))
     };
     ($world:expr, With($component:ident, $($components:ident),+)) => {{
         query_iter!($world, With($component))
@@ -35,7 +35,7 @@ macro_rules! query_iter {
                 (
                     e,
                     c,
-                    $( $world.components.$components.get(&e)?, )+
+                    $( $world.cmp.$components.get(&e)?, )+
                 )
             ))
     }};
@@ -51,7 +51,7 @@ macro_rules! query_execute {
             .copied()
             .collect::<Vec<_>>()
             .iter()
-            .for_each(|e| $f( e, $($world.components.$components.get_mut(&e).unwrap()),+ ))
+            .for_each(|e| $f( e, $($world.cmp.$components.get_mut(&e).unwrap()),+ ))
     };
     ($world:expr, With($($components:ident), +),  $f:expr) => {
         query!($world, With($($components),+))
@@ -59,7 +59,7 @@ macro_rules! query_execute {
             .copied()
             .collect::<Vec<_>>()
             .iter()
-            .for_each(|e| $f( e, $($world.components.$components.get_mut(&e).unwrap()),+ ))
+            .for_each(|e| $f( e, $($world.cmp.$components.get_mut(&e).unwrap()),+ ))
     };
 }
 
@@ -79,8 +79,8 @@ mod tests {
         let mut w = WorldStorage::<C, R>::default();
         let entity = w.spawn();
 
-        w.components.health.insert(entity, 15);
-        w.components.name.insert(entity, "Fifteen".to_string());
+        insert!(w, health, entity, 15);
+        insert!(w, name, entity, "Fifteen".to_string());
 
         let entities = query!(w, With(health, name)).copied().collect::<Vec<_>>();
         assert_eq!(entities.len(), 1);
@@ -102,14 +102,14 @@ mod tests {
         let b = w.spawn();
         let c = w.spawn();
 
-        w.components.health.insert(a, 15);
-        w.components.name.insert(a, "Fifteen".to_string());
-        w.components.marker.insert(a, ());
+        insert!(w, health, a, 15);
+        insert!(w, name, a, "Fifteen".to_string());
+        insert!(w, marker, a, ());
 
-        w.components.health.insert(b, 16);
+        insert!(w, health, b, 16);
 
-        w.components.health.insert(c, 17);
-        w.components.name.insert(c, "Seventeen".to_string());
+        insert!(w, health, c, 17);
+        insert!(w, name, c, "Seventeen".to_string());
 
         let entities = query!(w, With(health, name)).copied().collect::<Vec<_>>();
         assert_eq!(entities.len(), 2);
@@ -136,13 +136,13 @@ mod tests {
         let b = w.spawn();
         let c = w.spawn();
 
-        w.components.health.insert(a, 15);
-        w.components.name.insert(a, "Fifteen".to_string());
+        insert!(w, health, a, 15);
+        insert!(w, name, a, "Fifteen".to_string());
 
-        w.components.health.insert(b, 16);
+        insert!(w, health, b, 16);
 
-        w.components.health.insert(c, 17);
-        w.components.name.insert(c, "Seventeen".to_string());
+        insert!(w, health, c, 17);
+        insert!(w, name, c, "Seventeen".to_string());
 
         let entities = query!(w, With(health), Without(name))
             .copied()
@@ -168,18 +168,18 @@ mod tests {
         let c = w.spawn();
         let d = w.spawn();
 
-        w.components.attack.insert(a, 2);
-        w.components.health.insert(a, 15);
-        w.components.name.insert(a, "Fifteen".to_string());
+        insert!(w, attack, a, 2);
+        insert!(w, health, a, 15);
+        insert!(w, name, a, "Fifteen".to_string());
 
-        w.components.health.insert(b, 16);
-        w.components.name.insert(b, "Sixteen".to_string());
+        insert!(w, health, b, 16);
+        insert!(w, name, b, "Sixteen".to_string());
 
-        w.components.attack.insert(c, 3);
-        w.components.name.insert(c, "Seventeen".to_string());
+        insert!(w, attack, c, 3);
+        insert!(w, name, c, "Seventeen".to_string());
 
-        w.components.name.insert(d, "Eighteen".to_string());
-        w.components.marker.insert(d, ());
+        insert!(w, name, d, "Eighteen".to_string());
+        insert!(w, marker, d, ());
 
         let entities = query!(w, With(name), Without(attack, health))
             .copied()
@@ -211,8 +211,8 @@ mod tests {
         let entity = w.spawn();
         let entity_keep = w.spawn();
 
-        w.components.health.insert(entity, 15);
-        w.components.health.insert(entity_keep, 25);
+        insert!(w, health, entity, 15);
+        insert!(w, health, entity_keep, 25);
         w.despawn(entity);
 
         let entities = query!(w, With(health)).copied().collect::<Vec<_>>();
@@ -232,11 +232,11 @@ mod tests {
         let entity = w.spawn();
         let entity_keep = w.spawn();
 
-        w.components.health.insert(entity, 15);
-        w.components.health.insert(entity_keep, 25);
+        insert!(w, health, entity, 15);
+        insert!(w, health, entity_keep, 25);
         w.despawn(entity);
         let entity_recycle = w.spawn();
-        w.components.health.insert(entity_recycle, 35);
+        insert!(w, health, entity_recycle, 35);
 
         assert_eq!(entity.id, entity_recycle.id);
         assert_ne!(entity.version, entity_recycle.version);
@@ -262,14 +262,14 @@ mod tests {
         let b = w.spawn();
         let c = w.spawn();
 
-        w.components.health.insert(a, 15);
-        w.components.health.insert(c, 17);
+        insert!(w, health, a, 15);
+        insert!(w, health, c, 17);
 
-        w.components.strength.insert(a, 1);
-        w.components.strength.insert(b, 1);
-        w.components.strength.insert(c, 1);
+        insert!(w, strength, a, 1);
+        insert!(w, strength, b, 1);
+        insert!(w, strength, c, 1);
 
-        w.components.marker.insert(a, ());
+        insert!(w, marker, a, ());
 
         let v = query_iter!(w, With(strength))
             .map(|(_, s)| *s)
@@ -307,12 +307,12 @@ mod tests {
         let b = w.spawn();
         let c = w.spawn();
 
-        w.components.health.insert(a, 15);
-        w.components.health.insert(c, 17);
+        insert!(w, health, a, 15);
+        insert!(w, health, c, 17);
 
-        w.components.strength.insert(a, 1);
-        w.components.strength.insert(b, 2);
-        w.components.strength.insert(c, 1);
+        insert!(w, strength, a, 1);
+        insert!(w, strength, b, 2);
+        insert!(w, strength, c, 1);
 
         let v = query_iter!(w, With(strength), Without(health))
             .map(|(_, s)| s)
@@ -337,12 +337,12 @@ mod tests {
         let b = w.spawn();
         let c = w.spawn();
 
-        w.components.player.insert(a, ());
-        w.components.health.insert(c, 17);
+        insert!(w, player, a, ());
+        insert!(w, health, c, 17);
 
-        w.components.strength.insert(a, 1);
-        w.components.strength.insert(b, 2);
-        w.components.strength.insert(c, 1);
+        insert!(w, strength, a, 1);
+        insert!(w, strength, b, 2);
+        insert!(w, strength, c, 1);
 
         let v = query_iter!(w, With(strength), Without(health, player))
             .map(|(_, s)| s)
@@ -364,21 +364,21 @@ mod tests {
         let a = w.spawn();
         let b = w.spawn();
 
-        w.components.health.insert(a, 15);
-        w.components.name.insert(a, "Fifteen".to_string());
+        insert!(w, health, a, 15);
+        insert!(w, name, a, "Fifteen".to_string());
 
-        w.components.health.insert(b, 17);
-        w.components.name.insert(b, "Seventeen".to_string());
+        insert!(w, health, b, 17);
+        insert!(w, name, b, "Seventeen".to_string());
 
         query_execute!(w, With(health, name), |_, h: &mut u32, n: &mut String| {
             *h += 1;
             n.insert(0, '@');
         });
 
-        assert_eq!(*w.components.health.get(&a).unwrap(), 16);
-        assert_eq!(w.components.name.get(&a).unwrap(), "@Fifteen");
-        assert_eq!(*w.components.health.get(&b).unwrap(), 18);
-        assert_eq!(w.components.name.get(&b).unwrap(), "@Seventeen");
+        assert_eq!(*w.cmp.health.get(&a).unwrap(), 16);
+        assert_eq!(w.cmp.name.get(&a).unwrap(), "@Fifteen");
+        assert_eq!(*w.cmp.health.get(&b).unwrap(), 18);
+        assert_eq!(w.cmp.name.get(&b).unwrap(), "@Seventeen");
     }
 
     #[test]
@@ -394,17 +394,17 @@ mod tests {
         let a = w.spawn();
         let b = w.spawn();
 
-        w.components.health.insert(a, 15);
+        insert!(w, health, a, 15);
 
-        w.components.health.insert(b, 17);
-        w.components.name.insert(b, "Seventeen".to_string());
+        insert!(w, health, b, 17);
+        insert!(w, name, b, "Seventeen".to_string());
 
         query_execute!(w, With(health), Without(name), |_, h: &mut u32| {
             *h += 1;
         });
 
-        assert_eq!(*w.components.health.get(&a).unwrap(), 16);
-        assert_eq!(*w.components.health.get(&b).unwrap(), 17);
+        assert_eq!(*w.cmp.health.get(&a).unwrap(), 16);
+        assert_eq!(*w.cmp.health.get(&b).unwrap(), 17);
     }
 
     #[test]
@@ -428,22 +428,22 @@ mod tests {
         let mut world = World::default();
 
         let player = world.spawn();
-        world.components.health.insert(player, 5);
-        world.components.name.insert(player, "Player".to_string());
-        world.components.player.insert(player, ());
-        world.components.poison.insert(player, ());
-        world.components.strength.insert(player, 3);
+        insert!(world, health, player, 5);
+        insert!(world, name, player, "Player".to_string());
+        insert!(world, player, player, ());
+        insert!(world, poison, player, ());
+        insert!(world, strength, player, 3);
 
         let rat = world.spawn();
-        world.components.health.insert(rat, 2);
-        world.components.name.insert(rat, "Rat".to_string());
-        world.components.strength.insert(rat, 1);
+        insert!(world, health, rat, 2);
+        insert!(world, name, rat, "Rat".to_string());
+        insert!(world, strength, rat, 1);
 
         let serpent = world.spawn();
-        world.components.health.insert(serpent, 3);
-        world.components.name.insert(serpent, "Serpent".to_string());
-        world.components.poison.insert(serpent, ());
-        world.components.strength.insert(serpent, 2);
+        insert!(world, health, serpent, 3);
+        insert!(world, name, serpent, "Serpent".to_string());
+        insert!(world, poison, serpent, ());
+        insert!(world, strength, serpent, 2);
 
         // find matching entities, returns HashSet<Entity>
         let npcs = query!(world, With(health), Without(player)).collect::<Vec<_>>();
@@ -454,16 +454,16 @@ mod tests {
             *h = h.saturating_sub(1);
         });
 
-        assert_eq!(world.components.health.get(&player), Some(&4));
-        assert_eq!(world.components.health.get(&rat), Some(&2));
-        assert_eq!(world.components.health.get(&serpent), Some(&2));
+        assert_eq!(world.cmp.health.get(&player), Some(&4));
+        assert_eq!(world.cmp.health.get(&rat), Some(&2));
+        assert_eq!(world.cmp.health.get(&serpent), Some(&2));
 
         // heal player
-        let _ = world.components.poison.remove(player);
+        let _ = world.cmp.poison.remove(player);
         let poisoned = query!(world, With(poison)).collect::<Vec<_>>();
         assert_eq!(poisoned.len(), 1);
 
         // use resource
-        world.resources.current_level += 1;
+        world.res.current_level += 1;
     }
 }

@@ -45,7 +45,7 @@ async fn main() {
     let mut world = setup();
     loop {
         clear_background(BLACK);
-        if world.resources.gameover {
+        if world.res.gameover {
             // Handle game restart
             let text = "Press [enter] to play.";
             let font_size = 30.;
@@ -78,7 +78,7 @@ async fn main() {
 
         // CHECK WIN
         if query!(world, With(asteroid)).next().is_none() {
-            world.resources.gameover = true;
+            world.res.gameover = true;
         }
 
         // DRAW
@@ -91,7 +91,7 @@ async fn main() {
 
 fn setup() -> World {
     let mut world = World::default();
-    world.resources.last_shot = get_time();
+    world.res.last_shot = get_time();
 
     // spawn ship
     let ship_entity = spawn_object(
@@ -150,8 +150,8 @@ fn spawn_object(pos: Vec2, vel: Vec2, rot: Option<f32>, world: &mut World) -> En
 
 fn handle_ship_movement(world: &mut World) -> Option<()> {
     let &entity = query!(world, With(ship)).next()?;
-    let vel = world.components.vel.get_mut(&entity)?;
-    let rot = world.components.rot.get_mut(&entity)?;
+    let vel = world.cmp.vel.get_mut(&entity)?;
+    let rot = world.cmp.rot.get_mut(&entity)?;
     let mut acc = -*vel / 100.; // friction
 
     // accelerate
@@ -177,7 +177,7 @@ fn handle_ship_movement(world: &mut World) -> Option<()> {
 }
 
 fn shoot(frame_t: f64, world: &mut World) {
-    if frame_t - world.resources.last_shot < 0.5 {
+    if frame_t - world.res.last_shot < 0.5 {
         return;
     };
     let Some((_, &pos, &rot, _)) = query_iter!(world, With(pos, rot, ship)).next() else {
@@ -186,7 +186,7 @@ fn shoot(frame_t: f64, world: &mut World) {
     let rot_vec = Vec2::new(rot.sin(), -rot.cos());
     let entity = spawn_object(pos + rot_vec * SHIP_HEIGHT / 2., rot_vec * 7., None, world);
     insert!(world, bullet, entity, Bullet { shot_at: frame_t });
-    world.resources.last_shot = frame_t;
+    world.res.last_shot = frame_t;
 }
 
 fn handle_bullets(frame_t: f64, world: &mut World) {
@@ -211,7 +211,7 @@ fn handle_collisions(world: &mut World) {
     for (a_entity, a_pos, asteroid) in query_iter!(world, With(pos, asteroid)) {
         // player collision
         if (*a_pos - ship_pos).length() < asteroid.size + SHIP_HEIGHT / 3. {
-            world.resources.gameover = true;
+            world.res.gameover = true;
         }
 
         // bullet collisions
