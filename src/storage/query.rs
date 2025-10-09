@@ -35,7 +35,7 @@ macro_rules! query_iter {
                 (
                     e,
                     c,
-                    $( $world.components.$components.get(&e)? )+,
+                    $( $world.components.$components.get(&e)?, )+
                 )
             ))
     }};
@@ -238,6 +238,7 @@ mod tests {
         #[derive(ComponentSet, Default)]
         struct C {
             pub health: ComponentStorage<u32>,
+            pub marker: ComponentStorage<()>,
             pub strength: ComponentStorage<u32>,
         }
         #[derive(Default)]
@@ -254,11 +255,28 @@ mod tests {
         w.components.strength.insert(b, 1);
         w.components.strength.insert(c, 1);
 
+        w.components.marker.insert(a, ());
+
+        let v = query_iter!(w, With(strength))
+            .map(|(_, s)| *s)
+            .collect::<Vec<_>>();
+
+        assert_eq!(v.len(), 3);
+        assert_eq!(v.iter().sum::<u32>(), 3);
+
         let v = query_iter!(w, With(health, strength))
             .map(|(_, h, s)| h + s)
             .collect::<Vec<_>>();
+
         assert_eq!(v.len(), 2);
         assert_eq!(v.iter().sum::<u32>(), 34);
+
+        let v = query_iter!(w, With(health, strength, marker))
+            .map(|(_, h, s, _)| h + s)
+            .collect::<Vec<_>>();
+
+        assert_eq!(v.len(), 1);
+        assert_eq!(v.iter().sum::<u32>(), 16);
     }
 
     #[test]
