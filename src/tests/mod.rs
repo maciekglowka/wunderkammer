@@ -15,11 +15,11 @@ mod test_derive {
         c.health.insert(entity, 17);
         c.name.insert(entity, "Seventeen".to_string());
 
-        assert_eq!(c.health.entities().len(), 1);
-        assert_eq!(c.name.entities().len(), 1);
+        assert_eq!(c.health.entities().collect::<Vec<_>>().len(), 1);
+        assert_eq!(c.name.entities().collect::<Vec<_>>().len(), 1);
 
         c.despawn(entity);
-        assert_eq!(c.health.entities().len(), 0);
-        assert_eq!(c.name.entities().len(), 0);
+        assert_eq!(c.health.entities().collect::<Vec<_>>().len(), 0);
+        assert_eq!(c.name.entities().collect::<Vec<_>>().len(), 0);
     }
 }

@@ -22,10 +22,10 @@ fn impl_component_set(ast: &syn::DeriveInput) -> TokenStream {
                 #(self.#members_despawn.remove(entity);)*
             }
 
-            fn entities_str(&self, component: &str) -> std::collections::HashSet<Entity> {
+            fn entities_str(&self, component: &str) -> Vec<&Entity> {
                 match component {
-                    #(stringify!(#members_entities) => self.#members_entities.entities(),)*
-                    _ => std::collections::HashSet::new()
+                    #(stringify!(#members_entities) => self.#members_entities.entities().collect(),)*
+                    _ => Vec::new()
                 }
             }
         }

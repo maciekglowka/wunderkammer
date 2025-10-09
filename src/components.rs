@@ -2,17 +2,15 @@
 use serde::{Deserialize, Serialize};
 
 use crate::entity::{Entity, IdSize};
-use std::collections::HashSet;
-
 const TOMBSTONE: IdSize = IdSize::MAX;
 
 /// Base trait for the `components` world field.
 /// Handles component cleanup after an entity is despawned from the world.
 pub trait ComponentSet {
-    /// despawn all the entity's components
+    /// Despawn all the entity's components
     fn despawn(&mut self, entity: Entity);
-    /// get component entities by name (e.g. for scripting)
-    fn entities_str(&self, component: &str) -> std::collections::HashSet<Entity>;
+    /// Get component entities by name (e.g. for scripting)
+    fn entities_str(&self, component: &str) -> Vec<&Entity>;
 }
 
 /// Component storage based on a sparse set data structure.
@@ -31,10 +29,7 @@ impl<T> ComponentStorage<T> {
         self.values.get_mut(i)
     }
     // Return currently stored entities
-    pub fn entities(&self) -> HashSet<Entity> {
-        HashSet::from_iter(self.dense.iter().copied())
-    }
-    pub fn entities_iter(&self) -> impl Iterator<Item = &Entity> {
+    pub fn entities(&self) -> impl Iterator<Item = &Entity> {
         self.dense.iter()
     }
     // Insert a new component for the entity.
@@ -105,6 +100,8 @@ impl<T> Default for ComponentStorage<T> {
 mod tests {
     #[allow(unused_imports)]
     use super::*;
+    #[allow(unused_imports)]
+    use std::collections::HashSet;
 
     #[test]
     fn insert_first() {
@@ -148,7 +145,7 @@ mod tests {
         assert_eq!(storage.dense.len(), 5);
         assert_eq!(storage.values.len(), 5);
         assert_eq!(storage.sparse.len(), 10);
-        assert_eq!(storage.entities().len(), 5);
+        assert_eq!(storage.entities().collect::<Vec<_>>().len(), 5);
 
         for i in 0..10 {
             let entity = Entity { id: i, version: 0 };
@@ -211,7 +208,10 @@ mod tests {
         storage.insert(entity_0r, "VALUE0r");
 
         assert_eq!(storage.dense.len(), 2);
-        assert!(!storage.entities().contains(&entity_0));
+        assert!(!storage
+            .entities()
+            .collect::<HashSet<_>>()
+            .contains(&entity_0));
     }
 
     #[test]
@@ -223,7 +223,7 @@ mod tests {
         }
         assert_eq!(storage.dense.len(), 10);
         assert_eq!(storage.values.len(), 10);
-        assert_eq!(storage.entities().len(), 10);
+        assert_eq!(storage.entities().collect::<Vec<_>>().len(), 10);
 
         for i in 0..10 {
             let entity = Entity { id: i, version: 0 };
@@ -234,7 +234,7 @@ mod tests {
 
         assert_eq!(storage.dense.len(), 5);
         assert_eq!(storage.values.len(), 5);
-        assert_eq!(storage.entities().len(), 5);
+        assert_eq!(storage.entities().collect::<Vec<_>>().len(), 5);
 
         for i in 0..10 {
             let entity = Entity { id: i, version: 0 };

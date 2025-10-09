@@ -6,7 +6,7 @@ macro_rules! query {
             $(.filter(|e| $world.components.$without.get(**e).is_none()))+
     };
     ($world:expr, With($component:ident)) => {
-        $world.components.$component.entities_iter()
+        $world.components.$component.entities()
     };
     ($world:expr, With($component:ident, $($components:ident),+)) => {{
         query!($world, With($($components),+))
@@ -26,7 +26,7 @@ macro_rules! query_iter {
         $world
             .components
             .$component
-            .entities_iter()
+            .entities()
             .map(|&e| (e, $world.components.$component.get(e).unwrap()))
     };
     ($world:expr, With($component:ident, $($components:ident),+)) => {{

@@ -237,28 +237,25 @@ mod tests {
         use std::thread;
 
         let mut queue = ObservableQueue::new();
-        let observer = queue.subscribe();
-
         let handles = (0..10)
-            .map(|i| {
-                let mut queue_clone = ObservableQueue {
-                    queue: queue.queue.clone(),
-                    observers: queue.observers.clone(),
-                };
-                let observer_clone = Observer {
-                    front: observer.front.clone(),
-                    queue: observer.queue.clone(),
-                };
+            .map(|_| {
+                let observer = queue.subscribe();
                 thread::spawn(move || {
-                    for j in 0..10 {
-                        queue_clone.push(i * 10 + j);
-                        if let Some(value) = observer_clone.next() {
-                            assert_eq!(value, i * 10 + j);
-                        }
+                    // wait for the events
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    let mut sum = 0;
+                    while let Some(v) = observer.next() {
+                        sum += v;
                     }
+                    // Check that each observer has read all the events;
+                    assert_eq!(sum, 45);
                 })
             })
             .collect::<Vec<_>>();
+
+        for i in 0..10 {
+            queue.push(i);
+        }
 
         for handle in handles {
             handle.join().unwrap();
