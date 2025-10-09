@@ -45,14 +45,22 @@ macro_rules! query_iter {
 /// entity and it's components.
 #[macro_export]
 macro_rules! query_execute {
-    ($world:expr, $(Without($($without:ident),+),)? With($($component:ident),+), $f:expr) => {{
-        query!($world, With($($component),+) $(, Without($($without),+))?)
+    ($world:expr, With($($components:ident), +), Without($($without:ident),+), $f:expr) => {
+        query!($world, With($($components),+), Without($($without),+))
         // after querying should be always safe to unwrap
             .copied()
             .collect::<Vec<_>>()
             .iter()
-            .for_each(|e| $f( e, $($world.components.$component.get_mut(*e).unwrap()),+ ))
-    }};
+            .for_each(|e| $f( e, $($world.components.$components.get_mut(*e).unwrap()),+ ))
+    };
+    ($world:expr, With($($components:ident), +),  $f:expr) => {
+        query!($world, With($($components),+))
+        // after querying should be always safe to unwrap
+            .copied()
+            .collect::<Vec<_>>()
+            .iter()
+            .for_each(|e| $f( e, $($world.components.$components.get_mut(*e).unwrap()),+ ))
+    };
 }
 
 #[cfg(test)]
@@ -359,7 +367,7 @@ mod tests {
         w.components.health.insert(b, 17);
         w.components.name.insert(b, "Seventeen".to_string());
 
-        query_execute!(w, Without(name), With(health), |_, h: &mut u32| {
+        query_execute!(w, With(health), Without(name), |_, h: &mut u32| {
             *h += 1;
         });
 
