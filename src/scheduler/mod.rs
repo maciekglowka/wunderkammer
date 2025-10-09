@@ -5,10 +5,10 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
-use crate::{
-    markers,
-    observer::{ObservableQueue, Observer},
-};
+pub(crate) mod markers;
+pub(crate) mod observer;
+
+use observer::{ObservableQueue, Observer};
 
 #[derive(Default)]
 pub struct Scheduler<W> {
@@ -450,7 +450,7 @@ mod tests {
             world.0 = 10;
             Ok(())
         }
-        fn shield(_: &mut Attack, cx: &mut SchedulerContext) -> Result<(), CommandError> {
+        fn shield(_: &mut Attack, _cx: &mut SchedulerContext) -> Result<(), CommandError> {
             Err(CommandError::Break)
         }
 

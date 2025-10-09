@@ -12,13 +12,16 @@ keywords = ["gamedev", "ecs", "compositioni"]
 categories = ["game-development", "data-structures"]
 
 [features]
+default = ["scheduler", "storage"]
 log = ["dep:log"]
+scheduler = []
 serialize = ["dep:serde"]
+storage = ["dep:wunderkammer_derive"]
 
 [dependencies]
 log = { version = "0.4", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
-wunderkammer_derive = { version = "0.1", path = "wunderkammer_derive" }
+wunderkammer_derive = { version = "0.1", path = "wunderkammer_derive", optional = true }
 
 [dev-dependencies]
 serde_json = "1.0"

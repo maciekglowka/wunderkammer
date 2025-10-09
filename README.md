@@ -57,49 +57,45 @@ struct Resources {
 type World = WorldStorage<Components, Resources>;
 
 fn main() {
-        let mut world = World::default();
+    let mut world = World::default();
 
-        // spawn player
-        let player = world.spawn();
-        world.components.health.insert(player, 5);
-        world.components.name.insert(player, "Player".to_string());
-        world.components.player.insert(player, ());
-        world.components.strength.insert(player, 3);
+    let player = world.spawn();
+    insert!(world, health, player, 5);
+    insert!(world, name, player, "Player".to_string());
+    insert!(world, player, player, ());
+    insert!(world, poison, player, ());
+    insert!(world, strength, player, 3);
 
-        // spawn npcs
-        let rat = world.spawn();
-        world.components.health.insert(rat, 2);
-        world.components.name.insert(rat, "Rat".to_string());
-        world.components.strength.insert(rat, 1);
+    let rat = world.spawn();
+    insert!(world, health, rat, 2);
+    insert!(world, name, rat, "Rat".to_string());
+    insert!(world, strength, rat, 1);
 
-        let serpent = world.spawn();
-        world.components.health.insert(serpent, 3);
-        world.components.name.insert(serpent, "Serpent".to_string());
-        world.components.strength.insert(serpent, 2);
+    let serpent = world.spawn();
+    insert!(world, health, serpent, 3);
+    insert!(world, name, serpent, "Serpent".to_string());
+    insert!(world, poison, serpent, ());
+    insert!(world, strength, serpent, 2);
 
-        // find all npc entities, returns HashSet<Entity>
-        let npcs = query!(world, Without(player), With(health));
-        assert_eq!(npcs.len(), 2);
+    // find matching entities, returns HashSet<Entity>
+    let npcs = query!(world, With(health), Without(player)).collect::<Vec<_>>();
+    assert_eq!(npcs.len(), 2);
 
-        // poison the player and the serpent
-        world.components.poison.insert(player, ());
-        world.components.poison.insert(serpent, ());
+    // apply poison
+    query_execute!(world, With(health, poison), |_, h: &mut u32, _| {
+        *h = h.saturating_sub(1);
+    });
 
-        // apply poison damage
-        query_execute_mut!(world, With(health, poison), |_, h: &mut u32, _| {
-            *h = h.saturating_sub(1);
-        });
+    assert_eq!(world.cmp.health.get(&player), Some(&4));
+    assert_eq!(world.cmp.health.get(&rat), Some(&2));
+    assert_eq!(world.cmp.health.get(&serpent), Some(&2));
 
-        assert_eq!(world.components.health.get(player), Some(&4));
-        assert_eq!(world.components.health.get(rat), Some(&2));
-        assert_eq!(world.components.health.get(serpent), Some(&2));
+    // heal player
+    let _ = world.cmp.poison.remove(player);
+    let poisoned = query!(world, With(poison)).collect::<Vec<_>>();
+    assert_eq!(poisoned.len(), 1);
 
-        // heal player from poison
-        let _ = world.components.poison.remove(player);
-        let poisoned = query!(world, With(poison));
-        assert_eq!(poisoned.len(), 1);
-
-        // use resource
-        world.resources.current_level += 1;
-    }
+    // use resource
+    world.res.current_level += 1;
+}
 ```

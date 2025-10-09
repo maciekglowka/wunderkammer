@@ -58,7 +58,7 @@ impl EntityStorage {
         self.last_recycled = Some(entity.id);
     }
     /// Validates the given entity
-    pub(crate) fn is_valid(&self, entity: Entity) -> bool {
+    pub(crate) fn is_valid(&self, entity: &Entity) -> bool {
         let Some(existing) = self.entities.get(entity.id as usize) else {
             return false;
         };
@@ -68,8 +68,8 @@ impl EntityStorage {
             && self.first_recycled != Some(entity.id)
     }
     /// Iterate through valid entities
-    pub(crate) fn all(&self) -> impl Iterator<Item = Entity> + use<'_> {
-        self.entities.iter().filter(|e| self.is_valid(**e)).copied()
+    pub(crate) fn all(&self) -> impl Iterator<Item = &Entity> + use<'_> {
+        self.entities.iter().filter(|e| self.is_valid(e))
     }
 
     /// Spawns a fresh entity, with version 0
@@ -186,7 +186,7 @@ mod tests {
             storage.spawn();
         }
 
-        assert!(!storage.is_valid(Entity { id: 11, version: 0 }));
+        assert!(!storage.is_valid(&Entity { id: 11, version: 0 }));
     }
 
     #[test]
@@ -197,9 +197,9 @@ mod tests {
         }
 
         let entity = Entity { id: 5, version: 0 };
-        assert!(storage.is_valid(entity));
+        assert!(storage.is_valid(&entity));
         storage.despawn(entity);
-        assert!(!storage.is_valid(entity));
+        assert!(!storage.is_valid(&entity));
     }
 
     #[test]
@@ -210,11 +210,11 @@ mod tests {
         }
 
         let entity = Entity { id: 5, version: 0 };
-        assert!(storage.is_valid(entity));
+        assert!(storage.is_valid(&entity));
         storage.despawn(entity);
         let recycled = storage.spawn();
         assert_eq!(Entity { id: 5, version: 1 }, recycled);
-        assert!(!storage.is_valid(entity));
+        assert!(!storage.is_valid(&entity));
     }
 
     #[test]

@@ -45,7 +45,7 @@ async fn main() {
     let mut world = setup();
     loop {
         clear_background(BLACK);
-        if world.resources.gameover {
+        if world.res.gameover {
             // Handle game restart
             let text = "Press [enter] to play.";
             let font_size = 30.;
@@ -77,8 +77,8 @@ async fn main() {
         handle_collisions(&mut world);
 
         // CHECK WIN
-        if query!(world, With(asteroid)).is_empty() {
-            world.resources.gameover = true;
+        if query!(world, With(asteroid)).next().is_none() {
+            world.res.gameover = true;
         }
 
         // DRAW
@@ -91,7 +91,7 @@ async fn main() {
 
 fn setup() -> World {
     let mut world = World::default();
-    world.resources.last_shot = get_time();
+    world.res.last_shot = get_time();
 
     // spawn ship
     let ship_entity = spawn_object(
@@ -100,7 +100,7 @@ fn setup() -> World {
         Some(0.),
         &mut world,
     );
-    world.components.ship.insert(ship_entity, ());
+    insert!(world, ship, ship_entity, ());
 
     // spawn asteroids
     spawn_initial_asteroids(&mut world);
@@ -126,30 +126,32 @@ fn spawn_initial_asteroids(world: &mut World) {
 
 fn spawn_asteroid(pos: Vec2, vel: Vec2, sides: u8, size: f32, world: &mut World) {
     let entity = spawn_object(pos, vel, Some(0.), world);
-    world.components.asteroid.insert(
+    insert!(
+        world,
+        asteroid,
         entity,
         Asteroid {
             rot_speed: rand::gen_range(-2., 2.),
             sides,
             size,
-        },
+        }
     );
 }
 
 fn spawn_object(pos: Vec2, vel: Vec2, rot: Option<f32>, world: &mut World) -> Entity {
     let entity = world.spawn();
-    world.components.pos.insert(entity, pos);
-    world.components.vel.insert(entity, vel);
+    insert!(world, pos, entity, pos);
+    insert!(world, vel, entity, vel);
     if let Some(rot) = rot {
-        world.components.rot.insert(entity, rot);
+        insert!(world, rot, entity, rot);
     }
     entity
 }
 
 fn handle_ship_movement(world: &mut World) -> Option<()> {
-    let &entity = query!(world, With(ship)).iter().next()?;
-    let vel = world.components.vel.get_mut(entity)?;
-    let rot = world.components.rot.get_mut(entity)?;
+    let &entity = query!(world, With(ship)).next()?;
+    let vel = world.cmp.vel.get_mut(&entity)?;
+    let rot = world.cmp.rot.get_mut(&entity)?;
     let mut acc = -*vel / 100.; // friction
 
     // accelerate
@@ -175,7 +177,7 @@ fn handle_ship_movement(world: &mut World) -> Option<()> {
 }
 
 fn shoot(frame_t: f64, world: &mut World) {
-    if frame_t - world.resources.last_shot < 0.5 {
+    if frame_t - world.res.last_shot < 0.5 {
         return;
     };
     let Some((_, &pos, &rot, _)) = query_iter!(world, With(pos, rot, ship)).next() else {
@@ -183,11 +185,8 @@ fn shoot(frame_t: f64, world: &mut World) {
     };
     let rot_vec = Vec2::new(rot.sin(), -rot.cos());
     let entity = spawn_object(pos + rot_vec * SHIP_HEIGHT / 2., rot_vec * 7., None, world);
-    world
-        .components
-        .bullet
-        .insert(entity, Bullet { shot_at: frame_t });
-    world.resources.last_shot = frame_t;
+    insert!(world, bullet, entity, Bullet { shot_at: frame_t });
+    world.res.last_shot = frame_t;
 }
 
 fn handle_bullets(frame_t: f64, world: &mut World) {
@@ -209,25 +208,21 @@ fn handle_collisions(world: &mut World) {
 
     let mut to_split = Vec::new();
 
-    query_execute!(
-        world,
-        With(pos, asteroid),
-        |a_entity, a_pos: &Vec2, asteroid: &Asteroid| {
-            // player collision
-            if (*a_pos - ship_pos).length() < asteroid.size + SHIP_HEIGHT / 3. {
-                world.resources.gameover = true;
-            }
+    for (a_entity, a_pos, asteroid) in query_iter!(world, With(pos, asteroid)) {
+        // player collision
+        if (*a_pos - ship_pos).length() < asteroid.size + SHIP_HEIGHT / 3. {
+            world.res.gameover = true;
+        }
 
-            // bullet collisions
-            for (b_entity, b_pos, b_vel, _) in query_iter!(world, With(pos, vel, bullet)) {
-                if (*a_pos - *b_pos).length() < asteroid.size {
-                    // cache data to generate child asteroids
-                    to_split.push((a_entity, *a_pos, *asteroid, b_entity, *b_vel));
-                    break;
-                }
+        // bullet collisions
+        for (b_entity, b_pos, b_vel, _) in query_iter!(world, With(pos, vel, bullet)) {
+            if (*a_pos - *b_pos).length() < asteroid.size {
+                // cache data to generate child asteroids
+                to_split.push((a_entity, *a_pos, *asteroid, b_entity, *b_vel));
+                break;
             }
         }
-    );
+    }
 
     // despawn and split
     for (a_entity, a_pos, asteroid, b_entity, b_vel) in to_split {
@@ -255,13 +250,13 @@ fn handle_collisions(world: &mut World) {
 
 fn handle_kinematics(world: &mut World) {
     // move objects
-    query_execute_mut!(world, With(pos, vel), |_, pos: &mut Vec2, vel: &Vec2| {
+    query_execute!(world, With(pos, vel), |_, pos: &mut Vec2, vel: &Vec2| {
         *pos += *vel;
         *pos = wrap_around(pos);
     });
 
     // rotate asteroids
-    query_execute_mut!(
+    query_execute!(
         world,
         With(rot, asteroid),
         |_, rot: &mut f32, asteroid: &Asteroid| {
@@ -288,47 +283,39 @@ fn wrap_around(v: &Vec2) -> Vec2 {
 }
 
 fn draw_ship(world: &World) {
-    query_execute!(
-        world,
-        With(pos, rot, ship),
-        |_, pos: &Vec2, rot: &f32, _| {
-            let v1 = Vec2::new(
-                pos.x + rot.sin() * SHIP_HEIGHT / 2.,
-                pos.y - rot.cos() * SHIP_HEIGHT / 2.,
-            );
-            let v2 = Vec2::new(
-                pos.x - rot.cos() * SHIP_BASE / 2. - rot.sin() * SHIP_HEIGHT / 2.,
-                pos.y - rot.sin() * SHIP_BASE / 2. + rot.cos() * SHIP_HEIGHT / 2.,
-            );
-            let v3 = Vec2::new(
-                pos.x + rot.cos() * SHIP_BASE / 2. - rot.sin() * SHIP_HEIGHT / 2.,
-                pos.y + rot.sin() * SHIP_BASE / 2. + rot.cos() * SHIP_HEIGHT / 2.,
-            );
-            draw_triangle_lines(v1, v2, v3, 2., CYAN);
-        }
-    );
+    for (_, pos, rot, _) in query_iter!(world, With(pos, rot, ship)) {
+        let v1 = Vec2::new(
+            pos.x + rot.sin() * SHIP_HEIGHT / 2.,
+            pos.y - rot.cos() * SHIP_HEIGHT / 2.,
+        );
+        let v2 = Vec2::new(
+            pos.x - rot.cos() * SHIP_BASE / 2. - rot.sin() * SHIP_HEIGHT / 2.,
+            pos.y - rot.sin() * SHIP_BASE / 2. + rot.cos() * SHIP_HEIGHT / 2.,
+        );
+        let v3 = Vec2::new(
+            pos.x + rot.cos() * SHIP_BASE / 2. - rot.sin() * SHIP_HEIGHT / 2.,
+            pos.y + rot.sin() * SHIP_BASE / 2. + rot.cos() * SHIP_HEIGHT / 2.,
+        );
+        draw_triangle_lines(v1, v2, v3, 2., CYAN);
+    }
 }
 
 fn draw_bullets(world: &World) {
-    query_execute!(world, With(pos, bullet), |_, pos: &Vec2, _| {
+    for (_, pos, _) in query_iter!(world, With(pos, bullet)) {
         draw_circle(pos.x, pos.y, 2., CYAN);
-    });
+    }
 }
 
 fn draw_asteroids(world: &World) {
-    query_execute!(
-        world,
-        With(pos, rot, asteroid),
-        |_, pos: &Vec2, rot: &f32, asteroid: &Asteroid| {
-            draw_poly_lines(
-                pos.x,
-                pos.y,
-                asteroid.sides,
-                asteroid.size,
-                *rot,
-                2.,
-                MAGENTA,
-            );
-        }
-    );
+    for (_, pos, rot, asteroid) in query_iter!(world, With(pos, rot, asteroid)) {
+        draw_poly_lines(
+            pos.x,
+            pos.y,
+            asteroid.sides,
+            asteroid.size,
+            *rot,
+            2.,
+            MAGENTA,
+        );
+    }
 }
