@@ -60,14 +60,14 @@ mod tests {
         let a = w.spawn();
         let b = w.spawn();
 
-        w.components.health.insert(a, 15);
-        w.components.position.insert(a, Position { x: 2, y: 5 });
-        w.components.name.insert(a, "Fifteen".to_string());
+        insert!(w, health, a, 15);
+        insert!(w, position, a, Position { x: 2, y: 5 });
+        insert!(w, name, a, "Fifteen".to_string());
 
-        w.components.health.insert(b, 20);
-        w.components.position.insert(b, Position { x: 5, y: 4 });
+        insert!(w, health, b, 20);
+        insert!(w, position, b, Position { x: 5, y: 4 });
 
-        w.resources.globals.push("GlobalTwenty".to_string());
+        w.res.globals.push("GlobalTwenty".to_string());
 
         let serialized = serde_json::to_string(&w).unwrap();
 
@@ -80,12 +80,12 @@ mod tests {
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&a));
         assert_eq!(
-            *w_deserialized.components.position.get(&a).unwrap(),
+            *w_deserialized.cmp.position.get(&a).unwrap(),
             Position { x: 2, y: 5 }
         );
 
         assert!(w_deserialized
-            .resources
+            .res
             .globals
             .contains(&"GlobalTwenty".to_string()));
     }
