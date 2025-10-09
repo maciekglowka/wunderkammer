@@ -21,10 +21,10 @@ impl<C: ComponentSet, R: Default> WorldStorage<C, R> {
         self.components.despawn(entity);
         self.entities.despawn(entity);
     }
-    pub fn is_valid(&self, entity: Entity) -> bool {
+    pub fn is_valid(&self, entity: &Entity) -> bool {
         self.entities.is_valid(entity)
     }
-    pub fn entities(&self) -> impl Iterator<Item = Entity> + use<'_, C, R> {
+    pub fn entities(&self) -> impl Iterator<Item = &Entity> + use<'_, C, R> {
         self.entities.all()
     }
 }
@@ -73,11 +73,14 @@ mod tests {
 
         let w_deserialized: WorldStorage<C, R> = serde_json::from_str(&serialized).unwrap();
 
-        let entities = query!(w_deserialized, With(health, name));
+        let entities = query!(w_deserialized, With(health, name))
+            .copied()
+            .collect::<Vec<_>>();
+
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&a));
         assert_eq!(
-            *w_deserialized.components.position.get(a).unwrap(),
+            *w_deserialized.components.position.get(&a).unwrap(),
             Position { x: 2, y: 5 }
         );
 
