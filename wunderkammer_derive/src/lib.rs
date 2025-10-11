@@ -18,7 +18,7 @@ fn impl_component_set(ast: &syn::DeriveInput) -> TokenStream {
 
     let gen = quote! {
         impl ComponentSet for #name {
-            fn despawn(&mut self, entity: Entity) {
+            fn remove_all_components(&mut self, entity: Entity) {
                 #(self.#members_despawn.remove(entity);)*
             }
 

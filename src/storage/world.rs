@@ -10,7 +10,7 @@ use super::entity::{Entity, EntityStorage};
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 pub struct WorldStorage<C, R> {
     entities: EntityStorage,
-    pub cmp: C,
+    pub cmps: C,
     pub res: R,
 }
 impl<C: ComponentSet, R: Default> WorldStorage<C, R> {
@@ -18,7 +18,7 @@ impl<C: ComponentSet, R: Default> WorldStorage<C, R> {
         self.entities.spawn()
     }
     pub fn despawn(&mut self, entity: Entity) {
-        self.cmp.despawn(entity);
+        self.cmps.remove_all_components(entity);
         self.entities.despawn(entity);
     }
     pub fn is_valid(&self, entity: &Entity) -> bool {
@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(entities.len(), 1);
         assert!(entities.contains(&a));
         assert_eq!(
-            *w_deserialized.cmp.position.get(&a).unwrap(),
+            *w_deserialized.cmps.position.get(&a).unwrap(),
             Position { x: 2, y: 5 }
         );
 

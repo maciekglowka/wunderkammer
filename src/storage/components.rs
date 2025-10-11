@@ -8,7 +8,7 @@ const TOMBSTONE: IdSize = IdSize::MAX;
 /// Handles component cleanup after an entity is despawned from the world.
 pub trait ComponentSet {
     /// Despawn all the entity's components
-    fn despawn(&mut self, entity: Entity);
+    fn remove_all_components(&mut self, entity: Entity);
     /// Get component entities by name (e.g. for scripting)
     fn entities_str(&self, component: &str) -> Vec<&Entity>;
 }

@@ -11,7 +11,7 @@ Provides a simple Entity-Component structure, meant for small scoped data orient
 
 It aims to solve the most basic requirements of a component storage:
 
-- flexible object composition 
+- flexible object composition
 - querying for entities with a certain component set attached and processing their data
 
 The crate is merely a storage data structure and does not enforce any specific game architecture.
@@ -19,7 +19,7 @@ It is meant to also work in a traditional game loop context.
 
 Relies completely on static typing and compile time checks, while still allowing
 for runtime insertion and removal of components.
-    
+
 No unsafe code, internal mutability (like `RefCell`) or dynamic typing
 is used. It won't crash on you if you'll try to borrow a component set mutably twice :)
 
@@ -86,12 +86,12 @@ fn main() {
         *h = h.saturating_sub(1);
     });
 
-    assert_eq!(world.cmp.health.get(&player), Some(&4));
-    assert_eq!(world.cmp.health.get(&rat), Some(&2));
-    assert_eq!(world.cmp.health.get(&serpent), Some(&2));
+    assert_eq!(world.cmps.health.get(&player), Some(&4));
+    assert_eq!(world.cmps.health.get(&rat), Some(&2));
+    assert_eq!(world.cmps.health.get(&serpent), Some(&2));
 
     // heal player
-    let _ = world.cmp.poison.remove(player);
+    let _ = world.cmps.poison.remove(player);
     let poisoned = query!(world, With(poison)).collect::<Vec<_>>();
     assert_eq!(poisoned.len(), 1);
 

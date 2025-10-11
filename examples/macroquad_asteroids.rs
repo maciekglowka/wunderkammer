@@ -150,8 +150,8 @@ fn spawn_object(pos: Vec2, vel: Vec2, rot: Option<f32>, world: &mut World) -> En
 
 fn handle_ship_movement(world: &mut World) -> Option<()> {
     let &entity = query!(world, With(ship)).next()?;
-    let vel = world.cmp.vel.get_mut(&entity)?;
-    let rot = world.cmp.rot.get_mut(&entity)?;
+    let vel = world.cmps.vel.get_mut(&entity)?;
+    let rot = world.cmps.rot.get_mut(&entity)?;
     let mut acc = -*vel / 100.; // friction
 
     // accelerate

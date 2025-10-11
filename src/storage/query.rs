@@ -3,14 +3,14 @@
 macro_rules! query {
     ($world:expr, With($($components:ident), +), Without($($without:ident),+)) => {
         query!($world, With($($components),+))
-            $(.filter(|&e| $world.cmp.$without.get(e).is_none()))+
+            $(.filter(|&e| $world.cmps.$without.get(e).is_none()))+
     };
     ($world:expr, With($component:ident)) => {
-        $world.cmp.$component.entities()
+        $world.cmps.$component.entities()
     };
     ($world:expr, With($component:ident, $($components:ident),+)) => {{
         query!($world, With($($components),+))
-            .filter(|&e| $world.cmp.$component.get(e).is_some())
+            .filter(|&e| $world.cmps.$component.get(e).is_some())
     }};
 }
 
@@ -20,14 +20,14 @@ macro_rules! query {
 macro_rules! query_iter {
     ($world:expr, With($($components:ident), +), Without($($without:ident),+)) => {
         query_iter!($world, With($($components),+))
-            $(.filter(|a| $world.cmp.$without.get(&a.0).is_none()))+
+            $(.filter(|a| $world.cmps.$without.get(&a.0).is_none()))+
     };
     ($world:expr, With($component:ident)) => {
         $world
-            .cmp
+            .cmps
             .$component
             .entities()
-            .map(|&e| (e, $world.cmp.$component.get(&e).unwrap()))
+            .map(|&e| (e, $world.cmps.$component.get(&e).unwrap()))
     };
     ($world:expr, With($component:ident, $($components:ident),+)) => {{
         query_iter!($world, With($component))
@@ -35,7 +35,7 @@ macro_rules! query_iter {
                 (
                     e,
                     c,
-                    $( $world.cmp.$components.get(&e)?, )+
+                    $( $world.cmps.$components.get(&e)?, )+
                 )
             ))
     }};
@@ -51,7 +51,7 @@ macro_rules! query_execute {
             .copied()
             .collect::<Vec<_>>()
             .iter()
-            .for_each(|e| $f( e, $($world.cmp.$components.get_mut(&e).unwrap()),+ ))
+            .for_each(|e| $f( e, $($world.cmps.$components.get_mut(&e).unwrap()),+ ))
     };
     ($world:expr, With($($components:ident), +),  $f:expr) => {
         query!($world, With($($components),+))
@@ -59,7 +59,7 @@ macro_rules! query_execute {
             .copied()
             .collect::<Vec<_>>()
             .iter()
-            .for_each(|e| $f( e, $($world.cmp.$components.get_mut(&e).unwrap()),+ ))
+            .for_each(|e| $f( e, $($world.cmps.$components.get_mut(&e).unwrap()),+ ))
     };
 }
 
@@ -375,10 +375,10 @@ mod tests {
             n.insert(0, '@');
         });
 
-        assert_eq!(*w.cmp.health.get(&a).unwrap(), 16);
-        assert_eq!(w.cmp.name.get(&a).unwrap(), "@Fifteen");
-        assert_eq!(*w.cmp.health.get(&b).unwrap(), 18);
-        assert_eq!(w.cmp.name.get(&b).unwrap(), "@Seventeen");
+        assert_eq!(*w.cmps.health.get(&a).unwrap(), 16);
+        assert_eq!(w.cmps.name.get(&a).unwrap(), "@Fifteen");
+        assert_eq!(*w.cmps.health.get(&b).unwrap(), 18);
+        assert_eq!(w.cmps.name.get(&b).unwrap(), "@Seventeen");
     }
 
     #[test]
@@ -403,7 +403,7 @@ mod tests {
             *h += 1;
         });
 
-        assert_eq!(*w.cmp.health.get(&a).unwrap(), 16);
-        assert_eq!(*w.cmp.health.get(&b).unwrap(), 17);
+        assert_eq!(*w.cmps.health.get(&a).unwrap(), 16);
+        assert_eq!(*w.cmps.health.get(&b).unwrap(), 17);
     }
 }
