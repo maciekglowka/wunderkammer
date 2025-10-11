@@ -69,10 +69,10 @@ fn main() {
         invincible: false,
         shield: Some(1),
     };
+
     let mut world = World {
         units: vec![a, b, c],
     };
-
     let mut scheduler = Scheduler::new();
 
     scheduler.add_system_with_priority(check_invincible, 0);
@@ -84,6 +84,7 @@ fn main() {
     scheduler.send(Hit(1, 2));
     scheduler.send(Hit(2, 2));
 
+    // Process all the events
     while scheduler.step(&mut world) {}
 
     assert_eq!(world.units[0].health, 0);
