@@ -21,6 +21,6 @@ pub mod prelude {
     #[cfg(feature = "scheduler")]
     pub use scheduler::{
         observer::{ObservableQueue, Observer},
-        {CommandError, CommandHandler, Scheduler, SchedulerContext},
+        {EventError, EventHandler, EventResult, Scheduler, SchedulerContext},
     };
 }

@@ -10,10 +10,12 @@ pub(crate) mod observer;
 
 use observer::{ObservableQueue, Observer};
 
+pub type EventResult = Result<(), EventError>;
+
 #[derive(Default)]
 pub struct Scheduler<W> {
     handlers: HashMap<TypeId, Box<dyn HandlerSetErased<W>>>,
-    queue: VecDeque<Vec<ScheduledCommand>>,
+    queue: VecDeque<Vec<ScheduledEvent>>,
     sender: Sender,
 }
 impl<W: 'static> Scheduler<W> {
@@ -37,24 +39,24 @@ impl<W: 'static> Scheduler<W> {
             .or_insert(Box::new(HandlerSet::<T, W>::new()))
             .add_handler(Box::new(handler.handler()), priority);
     }
-    /// Send a command into it's own epoch.
-    pub fn send<T: 'static>(&mut self, command: T) {
+    /// Send an event into it's own epoch.
+    pub fn send<T: 'static>(&mut self, event: T) {
         self.queue
-            .push_back(vec![ScheduledCommand(TypeId::of::<T>(), Box::new(command))]);
+            .push_back(vec![ScheduledEvent(TypeId::of::<T>(), Box::new(event))]);
     }
-    /// Send a group of commands into a single epoch.
-    pub fn send_many<T: 'static>(&mut self, commands: Vec<T>) {
-        let commands = commands
+    /// Send a group of events into a single epoch.
+    pub fn send_many<T: 'static>(&mut self, events: Vec<T>) {
+        let events = events
             .into_iter()
-            .map(|e| ScheduledCommand(TypeId::of::<T>(), Box::new(e)))
+            .map(|e| ScheduledEvent(TypeId::of::<T>(), Box::new(e)))
             .collect::<Vec<_>>();
-        self.queue.push_back(commands);
+        self.queue.push_back(events);
     }
     pub fn step(&mut self, world: &mut W) -> bool {
         if let Some(epoch) = self.queue.pop_front() {
-            for command in epoch {
-                if let Some(set) = self.handlers.get_mut(&command.0) {
-                    set.handle(command.1, world, &mut self.sender);
+            for event in epoch {
+                if let Some(set) = self.handlers.get_mut(&event.0) {
+                    set.handle(event.1, world, &mut self.sender);
                 }
             }
         } else {
@@ -83,20 +85,20 @@ impl<W: 'static> Scheduler<W> {
     }
 }
 
-struct ScheduledCommand(TypeId, Box<dyn Any>);
+struct ScheduledEvent(TypeId, Box<dyn Any>);
 
 #[derive(Default)]
-pub struct Sender(Vec<ScheduledCommand>);
+pub struct Sender(Vec<ScheduledEvent>);
 impl Sender {
     fn new() -> Self {
         Self::default()
     }
-    /// Sends a resulting command.
-    /// All commands sent during the same epoch, will be executed together in
+    /// Sends a resulting event.
+    /// All events sent during the same epoch, will be executed together in
     /// the next epoch - regardless of their type.
     pub fn send<T: 'static>(&mut self, event: T) {
         self.0
-            .push(ScheduledCommand(TypeId::of::<T>(), Box::new(event)));
+            .push(ScheduledEvent(TypeId::of::<T>(), Box::new(event)));
     }
 }
 
@@ -109,83 +111,76 @@ impl<'a> SchedulerContext<'a> {
     }
 }
 
-pub struct CommandHandler<T, W>(
-    Box<dyn Fn(&mut T, &mut W, &mut SchedulerContext) -> Result<(), CommandError>>,
-);
+pub struct EventHandler<T, W>(Box<dyn Fn(&mut T, &mut W, &mut SchedulerContext) -> EventResult>);
 
-impl<T, W> CommandHandler<T, W> {
-    fn execute(
-        &self,
-        event: &mut T,
-        world: &mut W,
-        context: &mut SchedulerContext,
-    ) -> Result<(), CommandError> {
+impl<T, W> EventHandler<T, W> {
+    fn execute(&self, event: &mut T, world: &mut W, context: &mut SchedulerContext) -> EventResult {
         self.0(event, world, context)
     }
 }
 
 #[derive(Debug)]
-pub enum CommandError {
+pub enum EventError {
     Break,
     Continue,
 }
 
-impl fmt::Display for CommandError {
+impl fmt::Display for EventError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            CommandError::Break => write!(f, "Break"),
-            CommandError::Continue => write!(f, "Continue"),
+            EventError::Break => write!(f, "Break"),
+            EventError::Continue => write!(f, "Continue"),
         }
     }
 }
 
-impl Error for CommandError {}
+impl Error for EventError {}
 
 pub trait IntoHandler<T, W, M> {
-    fn handler(self) -> CommandHandler<T, W>;
+    fn handler(self) -> EventHandler<T, W>;
 }
 
 impl<F, T, W> IntoHandler<T, W, markers::EventOnlyMarker> for F
 where
-    F: Fn(&mut T) -> Result<(), CommandError> + 'static,
+    F: Fn(&mut T) -> EventResult + 'static,
     T: 'static,
 {
-    fn handler(self) -> CommandHandler<T, W> {
+    fn handler(self) -> EventHandler<T, W> {
         let wrapper = move |a: &mut T, _: &mut W, _: &mut SchedulerContext| self(a);
-        CommandHandler::<T, W>(Box::new(wrapper))
+        EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
 impl<F, T, W> IntoHandler<T, W, markers::WithWorldMarker> for F
 where
-    F: Fn(&mut T, &mut W) -> Result<(), CommandError> + 'static,
+    F: Fn(&mut T, &mut W) -> EventResult + 'static,
     T: 'static,
 {
-    fn handler(self) -> CommandHandler<T, W> {
+    fn handler(self) -> EventHandler<T, W> {
         let wrapper = move |a: &mut T, w: &mut W, _: &mut SchedulerContext| self(a, w);
-        CommandHandler::<T, W>(Box::new(wrapper))
+        EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
 impl<F, T, W> IntoHandler<T, W, markers::WithContextMarker> for F
 where
-    F: Fn(&mut T, &mut SchedulerContext) -> Result<(), CommandError> + 'static,
+    F: Fn(&mut T, &mut SchedulerContext) -> EventResult + 'static,
     T: 'static,
 {
-    fn handler(self) -> CommandHandler<T, W> {
+    fn handler(self) -> EventHandler<T, W> {
         let wrapper = move |a: &mut T, _: &mut W, c: &mut SchedulerContext| self(a, c);
-        CommandHandler::<T, W>(Box::new(wrapper))
+        EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
 impl<F, T, W> IntoHandler<T, W, markers::WithWorldAndContextMarker> for F
 where
-    F: Fn(&mut T, &mut W, &mut SchedulerContext) -> Result<(), CommandError> + 'static,
+    F: Fn(&mut T, &mut W, &mut SchedulerContext) -> EventResult + 'static,
     T: 'static,
 {
-    fn handler(self) -> CommandHandler<T, W> {
+    fn handler(self) -> EventHandler<T, W> {
         let wrapper = move |a: &mut T, w: &mut W, c: &mut SchedulerContext| self(a, w, c);
-        CommandHandler::<T, W>(Box::new(wrapper))
+        EventHandler::<T, W>(Box::new(wrapper))
     }
 }
 
@@ -225,8 +220,8 @@ impl<T: 'static, W: 'static> HandlerSetErased<W> for HandlerSet<T, W> {
         for entry in self.handlers.iter() {
             match entry.handler.execute(ev.as_mut(), world, &mut cx) {
                 Ok(_) => (),
-                Err(CommandError::Break) => return,
-                Err(CommandError::Continue) => continue,
+                Err(EventError::Break) => return,
+                Err(EventError::Continue) => continue,
             }
         }
         self.observable.push(*ev);
@@ -238,7 +233,7 @@ impl<T: 'static, W: 'static> HandlerSetErased<W> for HandlerSet<T, W> {
 
 struct HandlerEntry<T, W> {
     priority: i32,
-    handler: CommandHandler<T, W>,
+    handler: EventHandler<T, W>,
 }
 
 mod tests {
@@ -251,7 +246,7 @@ mod tests {
         struct Attack(u32);
         struct World;
 
-        fn attack_handler(attack: &mut Attack) -> Result<(), CommandError> {
+        fn attack_handler(attack: &mut Attack) -> EventResult {
             attack.0 += 1;
             Ok(())
         }
@@ -270,7 +265,7 @@ mod tests {
         struct Attack(u32);
         struct World(u32);
 
-        fn attack_handler(attack: &mut Attack, world: &mut World) -> Result<(), CommandError> {
+        fn attack_handler(attack: &mut Attack, world: &mut World) -> EventResult {
             world.0 = attack.0;
             Ok(())
         }
@@ -289,10 +284,7 @@ mod tests {
         struct Attack(u32);
         struct World;
 
-        fn attack_handler(
-            attack: &mut Attack,
-            cx: &mut SchedulerContext,
-        ) -> Result<(), CommandError> {
+        fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) -> EventResult {
             cx.send(Attack(17 + attack.0));
             Ok(())
         }
@@ -327,7 +319,7 @@ mod tests {
             attack: &mut Attack,
             world: &mut World,
             cx: &mut SchedulerContext,
-        ) -> Result<(), CommandError> {
+        ) -> EventResult {
             world.0 = attack.0;
             cx.send(Attack(17 + attack.0));
             Ok(())
@@ -364,7 +356,7 @@ mod tests {
             attack: &mut Attack,
             world: &mut World,
             cx: &mut SchedulerContext,
-        ) -> Result<(), CommandError> {
+        ) -> EventResult {
             world.0 += attack.0;
             cx.send(Attack(attack.0));
             Ok(())
@@ -388,15 +380,12 @@ mod tests {
 
         struct World(u32);
 
-        fn attack_handler(
-            attack: &mut Attack,
-            cx: &mut SchedulerContext,
-        ) -> Result<(), CommandError> {
+        fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) -> EventResult {
             cx.send(Damage(2 * attack.0));
             Ok(())
         }
 
-        fn damage_handler(damage: &mut Damage, world: &mut World) -> Result<(), CommandError> {
+        fn damage_handler(damage: &mut Damage, world: &mut World) -> EventResult {
             world.0 = damage.0;
             Ok(())
         }
@@ -419,11 +408,11 @@ mod tests {
         struct Attack(u32);
         struct World(u32);
 
-        fn add_handler(attack: &mut Attack, world: &mut World) -> Result<(), CommandError> {
+        fn add_handler(attack: &mut Attack, world: &mut World) -> EventResult {
             world.0 = attack.0 + 2;
             Ok(())
         }
-        fn multiply_handler(attack: &mut Attack) -> Result<(), CommandError> {
+        fn multiply_handler(attack: &mut Attack) -> EventResult {
             attack.0 *= 3;
             Ok(())
         }
@@ -446,12 +435,12 @@ mod tests {
 
         struct World(u32);
 
-        fn attack(_: &mut Attack, world: &mut World) -> Result<(), CommandError> {
+        fn attack(_: &mut Attack, world: &mut World) -> EventResult {
             world.0 = 10;
             Ok(())
         }
-        fn shield(_: &mut Attack, _cx: &mut SchedulerContext) -> Result<(), CommandError> {
-            Err(CommandError::Break)
+        fn shield(_: &mut Attack, _cx: &mut SchedulerContext) -> EventResult {
+            Err(EventError::Break)
         }
 
         let mut scheduler = Scheduler::new();
@@ -473,15 +462,12 @@ mod tests {
 
         struct World(u32);
 
-        fn attack_handler(
-            attack: &mut Attack,
-            cx: &mut SchedulerContext,
-        ) -> Result<(), CommandError> {
+        fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) -> EventResult {
             cx.send(Damage(2 * attack.0));
             Ok(())
         }
 
-        fn damage_handler(damage: &mut Damage, world: &mut World) -> Result<(), CommandError> {
+        fn damage_handler(damage: &mut Damage, world: &mut World) -> EventResult {
             world.0 = damage.0;
             Ok(())
         }
@@ -510,7 +496,7 @@ mod tests {
 
         struct World;
 
-        fn attack_handler(_: &mut Attack) -> Result<(), CommandError> {
+        fn attack_handler(_: &mut Attack) -> EventResult {
             // idle
             Ok(())
         }
@@ -535,7 +521,7 @@ mod tests {
 
         struct World;
 
-        fn attack_handler(_: &mut Attack) -> Result<(), CommandError> {
+        fn attack_handler(_: &mut Attack) -> EventResult {
             // idle
             Ok(())
         }
