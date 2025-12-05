@@ -6,36 +6,33 @@
 
 **An experimental EC(S) crate.**
 
-Provides a simple Entity-Component structure, meant for small scoped data oriented games (eg. roguelikes).
+Uber-simple solutions for small-scoped, data-oriented games (e.g. roguelikes).
 
+The crate does not enforce any specific game architecture.
+It is meant to work well in a traditional game loop context.
 
-It aims to solve the most basic requirements of a component storage:
+Currently two independent functionalities are provided:
+- an entity-component storage
+- an event based scheduler queue
+
+## Entity-Component Storage
+
+Aims to solve the most basic requirements of an ECS storage:
 
 - flexible object composition
-- querying for entities with a certain component set attached and processing their data
+- looking up entities with a required component set and processing their data
 
-The crate is merely a storage data structure and does not enforce any specific game architecture.
-It is meant to also work in a traditional game loop context.
-
-Relies completely on static typing and compile time checks, while still allowing
+The crate relies entirely on static typing and compile-time checks, while still allowing
 for runtime insertion and removal of components.
 
-No unsafe code, internal mutability (like `RefCell`) or dynamic typing
-is used. It won't crash on you if you'll try to borrow a component set mutably twice :)
+No unsafe code nor internal mutability (like `RefCell`) is used.
+It won't crash on you if you'll try to borrow a component set mutably twice :)
 
-The internal component storage is based on sparse set data structures, rather then archetypes.
-It should still provide some level of cache locality - the component data is held in continuous vector types.
+The internal component storage is based on sparse set data structures, rather than archetypes.
+It should still provide some level of cache locality
+- the component data is held in contiguous vector types.
 
-## Crate goals
-
-- Simple but flexible data storage for tiny games
-- Reliability through compile-time checks and static typing
-- Dynamic component insertion and removal
-- Recycling of despawned entities
-- Easy (de)serialization - via optional `serialize` feature
-- As few dependencies as possible (currently only `syn` and `quote` libs to handle derive macros, + `serde` behind a feature flag)
-
-## Example usage
+### Example EC usage
 
 ```rust
 use wunderkammer::prelude::*;
@@ -77,7 +74,6 @@ fn main() {
     insert!(world, poison, serpent, ());
     insert!(world, strength, serpent, 2);
 
-    // find matching entities, returns HashSet<Entity>
     let npcs = query!(world, With(health), Without(player)).collect::<Vec<_>>();
     assert_eq!(npcs.len(), 2);
 
@@ -90,12 +86,98 @@ fn main() {
     assert_eq!(world.cmps.health.get(&rat), Some(&2));
     assert_eq!(world.cmps.health.get(&serpent), Some(&2));
 
-    // heal player
+    // heal the player
     let _ = world.cmps.poison.remove(player);
     let poisoned = query!(world, With(poison)).collect::<Vec<_>>();
     assert_eq!(poisoned.len(), 1);
 
-    // use resource
+    // use a resource
     world.res.current_level += 1;
 }
 ```
+
+## Event scheduler
+
+The crate also provides a simple generic event queue / scheduler struct:
+
+```rust ignore
+// Events
+struct Hit(Entity, i32); // (unit idx, dmg)
+struct Kill(Entity); // unit idx
+
+fn apply_damage(ev: &mut Hit, world: &mut World, cx: &mut SchedulerContext) -> EventResult {
+    let health = world.cmps.health.get_mut(ev.0)
+        .ok_or(EventError::Break)?;
+
+    *health -= ev.1;
+    if *health <= 0 {
+        // Spawn a resulting event.
+        cx.send(Kill(ev.0));
+    }
+
+    Ok(())
+}
+fn kill(ev: &mut Kill, world: &mut World) -> EventResult {
+    world.despawn(ev.0);
+    Ok(())
+}
+
+let mut scheduler = Scheduler::new();
+
+scheduler.add_system(apply_damage);
+scheduler.add_system(kill);
+
+scheduler.send(Hit(0, 2));
+scheduler.send(Hit(1, 2));
+scheduler.send(Hit(2, 2));
+```
+
+Since handlers can be chained and events are passed as mutable references,
+a higher priority (earlier) handler can modify the event data during execution:
+
+```rust ignore
+/// Executes before `apply_damage`
+fn apply_shield(ev: &mut Hit, world: &mut World) -> EventResult {
+    let shield = world.cmps.shield.get(cmd.0).ok_or(EventError::Continue)?;
+    // Mutate the event, lower dmg by unit's shield value.
+    ev.1 -= *shield;
+    Ok(())
+}
+```
+
+### Control flow
+
+The `EventResult` return type allows for a basic control flow between the handlers:
+
+- `Ok(())` -> uninterrupted execution
+- `Err(CommandError::Break)` -> this event is invalid. Stop the execution of
+    current and subsequent handlers.
+- `Err(CommandError::Continue)` -> the current handler cannot process further.
+    But do not stop execution of the next ones.
+
+### Observability
+
+Apart from the standard handlers, there is also a possiblity to create read-only observers.
+They're mostly useful for decoupling parts of code that only need to react to finalized events
+(like graphics, sound effects, journals).
+
+```rust ignore
+let log_observer = scheduler.observe::<Hit>();
+
+let _ = std::thread::spawn(move || loop {
+    if let Some(ev) = log_observer.next() {
+        println!("{:?} got hit for {}", ev.0, ev.1);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(100));
+});
+```
+
+## Crate goals
+
+- Simple but flexible data storage for tiny games
+- Reliability through compile-time checks and static typing
+- Dynamic (runtime) component insertion and removal
+- Recycling of despawned entities
+- Flexible event queue (mostly for turn-based games and command patterns)
+- Easy (de)serialization - via optional `serialize` feature
+- Minimal dependencies
