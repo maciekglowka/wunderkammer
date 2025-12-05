@@ -111,8 +111,8 @@ impl Sender {
     /// Schedule event for a delayed execution.
     /// The event will be placed in it's own epoch at the end of the queue.
     pub fn send_delayed<T: 'static>(&mut self, event: T) {
-        self.immediate
-            .push(ScheduledEvent(TypeId::of::<T>(), Box::new(event)));
+        self.delayed
+            .push_back(ScheduledEvent(TypeId::of::<T>(), Box::new(event)));
     }
 }
 
