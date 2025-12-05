@@ -40,7 +40,7 @@ fn apply_damage(ev: &mut Hit, world: &mut World, cx: &mut SchedulerContext) -> E
 
     if world.units[ev.0].health <= 0 {
         // Spawn a resulting event.
-        cx.send(Kill(ev.0));
+        cx.send_immediate(Kill(ev.0));
     }
 
     Ok(())

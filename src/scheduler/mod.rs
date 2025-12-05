@@ -64,9 +64,14 @@ impl<W: 'static> Scheduler<W> {
         }
 
         // Handle immediate results
-        if !self.sender.0.is_empty() {
+        if !self.sender.immediate.is_empty() {
             // Immediate results share the epoch
-            self.queue.push_front(self.sender.0.drain(..).collect());
+            self.queue
+                .push_front(self.sender.immediate.drain(..).collect());
+        }
+
+        while let Some(event) = self.sender.delayed.pop_front() {
+            self.queue.push_back(vec![event]);
         }
 
         true
@@ -88,16 +93,25 @@ impl<W: 'static> Scheduler<W> {
 struct ScheduledEvent(TypeId, Box<dyn Any>);
 
 #[derive(Default)]
-pub struct Sender(Vec<ScheduledEvent>);
+pub struct Sender {
+    immediate: Vec<ScheduledEvent>,
+    delayed: VecDeque<ScheduledEvent>,
+}
 impl Sender {
     fn new() -> Self {
         Self::default()
     }
-    /// Sends a resulting event.
+    /// Schedule event for an immediate execution.
     /// All events sent during the same epoch, will be executed together in
     /// the next epoch - regardless of their type.
-    pub fn send<T: 'static>(&mut self, event: T) {
-        self.0
+    pub fn send_immediate<T: 'static>(&mut self, event: T) {
+        self.immediate
+            .push(ScheduledEvent(TypeId::of::<T>(), Box::new(event)));
+    }
+    /// Schedule event for a delayed execution.
+    /// The event will be placed in it's own epoch at the end of the queue.
+    pub fn send_delayed<T: 'static>(&mut self, event: T) {
+        self.immediate
             .push(ScheduledEvent(TypeId::of::<T>(), Box::new(event)));
     }
 }
@@ -106,8 +120,11 @@ pub struct SchedulerContext<'a> {
     sender: &'a mut Sender,
 }
 impl<'a> SchedulerContext<'a> {
-    pub fn send<T: 'static>(&mut self, event: T) {
-        self.sender.send(event);
+    pub fn send_immediate<T: 'static>(&mut self, event: T) {
+        self.sender.send_immediate(event);
+    }
+    pub fn send_delayed<T: 'static>(&mut self, event: T) {
+        self.sender.send_delayed(event);
     }
 }
 
@@ -285,7 +302,7 @@ mod tests {
         struct World;
 
         fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) -> EventResult {
-            cx.send(Attack(17 + attack.0));
+            cx.send_immediate(Attack(17 + attack.0));
             Ok(())
         }
 
@@ -321,7 +338,7 @@ mod tests {
             cx: &mut SchedulerContext,
         ) -> EventResult {
             world.0 = attack.0;
-            cx.send(Attack(17 + attack.0));
+            cx.send_immediate(Attack(17 + attack.0));
             Ok(())
         }
 
@@ -358,7 +375,7 @@ mod tests {
             cx: &mut SchedulerContext,
         ) -> EventResult {
             world.0 += attack.0;
-            cx.send(Attack(attack.0));
+            cx.send_immediate(Attack(attack.0));
             Ok(())
         }
 
@@ -381,7 +398,7 @@ mod tests {
         struct World(u32);
 
         fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) -> EventResult {
-            cx.send(Damage(2 * attack.0));
+            cx.send_immediate(Damage(2 * attack.0));
             Ok(())
         }
 
@@ -463,7 +480,7 @@ mod tests {
         struct World(u32);
 
         fn attack_handler(attack: &mut Attack, cx: &mut SchedulerContext) -> EventResult {
-            cx.send(Damage(2 * attack.0));
+            cx.send_immediate(Damage(2 * attack.0));
             Ok(())
         }
 
