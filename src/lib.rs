@@ -1,5 +1,6 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))]
 
+pub mod events;
 #[cfg(feature = "scheduler")]
 pub mod scheduler;
 #[cfg(feature = "storage")]
@@ -7,6 +8,9 @@ pub mod storage;
 
 pub mod prelude {
     use super::*;
+
+    pub use events::{event_bus, EventSubscriber};
+
     #[cfg(feature = "storage")]
     pub use super::{insert, query, query_execute, query_iter};
     #[cfg(feature = "storage")]
