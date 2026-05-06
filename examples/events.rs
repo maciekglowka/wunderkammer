@@ -7,7 +7,7 @@ fn main() {
     let mut world = World(0);
     let mut graphics = Graphics(0);
     let mut bus = event_bus();
-    let mut g_bus = bus.spawn_subscriber();
+    // let mut g_bus = bus.spawn_subscriber();
 
     // let handler = EventHandler(Box::new(|ev: &u32, w: &mut World| println!("W:
     // {ev}")));
@@ -22,13 +22,13 @@ fn main() {
     // }));
 
     bus.add_handler(handler);
-    g_bus.add_handler(g_handler);
+    // g_bus.add_handler(g_handler);
 
     bus.send(3_u32);
     bus.step(&mut world);
     bus.send(7_u32);
 
-    g_bus.step(&mut (&mut graphics, &world));
+    // g_bus.step(&mut (&mut graphics, &world));
 
     // g_bus.step(&mut (&mut graphics, &world));
     // g_bus.step(&mut graphics);

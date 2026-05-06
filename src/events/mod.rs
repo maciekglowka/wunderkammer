@@ -51,7 +51,7 @@ impl<W> EventSubscriber<W> {
             .inner
             .push_back(ScheduledEvent(TypeId::of::<T>(), Box::new(event)));
     }
-    pub fn step(&mut self, env: &mut W) {
+    pub fn step(&mut self, env: W) {
         let mut queue = self.queue.lock().unwrap();
 
         let Some(front) = queue.inner.get(self.front.load(Ordering::Relaxed)) else {
@@ -60,7 +60,11 @@ impl<W> EventSubscriber<W> {
         self.front.fetch_add(1, Ordering::Relaxed);
 
         if let Some(handlers) = self.handlers.get(&front.0) {
-            handlers.iter().for_each(|h| h.handle(&*front.1, env));
+            // let handler = handlers.first().unwrap().as_ref();
+            // handler.handle(&*front.1, env);
+            // env.accept(&*front.1, handlers.first().unwrap().as_ref());
+            // env.accept_handlers(&*front.1, handlers.iter());
+            // handlers.iter().for_each(|h| h.handle(&*front.1, env));
         };
 
         queue.synchronize();
@@ -107,8 +111,42 @@ impl EventQueue {
     }
 }
 
+trait HandlerEnv {
+    // type Target;
+    // fn accept_handlers(
+    //     self,
+    //     arg: &dyn Any,
+    //     handlers: impl IntoIterator<Item = &'a Box<dyn Handler<W>>>,
+    // );
+    fn accept(&mut self, arg: &dyn Any, handler: &dyn Handler<Self>);
+}
+impl<'a, W: 'a> HandlerEnv for &'a mut W {
+    // type Target = &'a mut W;
+
+    fn accept(&mut self, arg: &dyn Any, handler: &dyn Handler<&mut W>) {
+        handler.handle(arg, *self);
+    }
+}
+// impl<'a, W: 'a> HandlerEnv<'a, &'a mut W> for &'a mut W {
+// fn accept_handlers(
+//     self,
+//     arg: &dyn Any,
+//     handlers: impl IntoIterator<Item = &'a Box<dyn Handler<&'a mut W>>>,
+// ) {
+//     for handler in handlers {
+//         // handler.handle(arg, self);
+//         println!("Ref");
+//     }
+// }
+// }
+// impl<'a, W> HandlerEnv<'a, W> for &mut W {
+//     fn accept_handlers(self, arg: &dyn Any, handlers: impl Iterator<Item =
+// &'a impl Handler<W>>) {         println!("Ref mut");
+//     }
+// }
+
 trait Handler<W> {
-    fn handle(&self, arg: &dyn Any, env: &mut W);
+    fn handle(&self, arg: &dyn Any, env: W);
 }
 
 struct HandlerWrapper<F, T> {
@@ -118,68 +156,28 @@ struct HandlerWrapper<F, T> {
 
 impl<F, T, W> Handler<W> for HandlerWrapper<F, T>
 where
-    F: Fn(&T, &mut W),
+    F: Fn(&T, W),
     T: 'static,
 {
-    fn handle(&self, arg: &dyn Any, env: &mut W) {
+    fn handle(&self, arg: &dyn Any, env: W) {
         let arg = arg.downcast_ref().unwrap();
         (self.f)(arg, env);
     }
 }
 
 trait IntoWrapper<F, T, W> {
-    fn wrap(self) -> HandlerWrapper<impl Fn(&T, &mut W) + 'static, T>;
+    fn wrap(self) -> HandlerWrapper<impl Fn(&T, W) + 'static, T>;
 }
 impl<F, T, W> IntoWrapper<F, T, W> for F
 where
-    F: Fn(&T, &mut W) + 'static,
+    F: Fn(&T, W) + 'static,
     T: 'static,
 {
-    fn wrap(self) -> HandlerWrapper<impl Fn(&T, &mut W) + 'static, T> {
-        let f = move |arg: &T, env: &mut W| self(arg, env);
+    fn wrap(self) -> HandlerWrapper<impl Fn(&T, W) + 'static, T> {
+        let f = move |arg: &T, env: W| self(arg, env);
         HandlerWrapper {
             f,
             _marker: std::marker::PhantomData,
         }
     }
 }
-
-// trait HandlerSetErased {
-//     type Env;
-//     // fn add_handler(&mut self, handler: Box<dyn Any>);
-//     fn handle(&self, event: &dyn Any, env: Self::Env);
-// }
-
-// struct HandlerSet<T> {
-//     // handlers: Vec<EventHandler<T, W>>,
-// }
-// impl<T> HandlerSet<T> {
-//     fn new() -> Self {
-//         Self {
-//             // handlers: Vec::new(),
-//         }
-//     }
-// }
-// impl<T: 'static, W> HandlerSetErased for HandlerSet<T> {
-//     type Env = W;
-//     // fn add_handler(&mut self, handler: Box<dyn Any>) {
-//     //     let handler = *handler.downcast().unwrap();
-//     //     self.handlers.push(handler);
-//     // }
-//     fn handle(&self, event: &dyn Any, mut env: W) {
-//         // let event = event.downcast_ref().unwrap();
-//         // self.handlers.iter().for_each(|h| h.execute(event, env.a()));
-//     }
-// }
-
-// pub struct EventHandler<T, W>(pub Box<dyn Fn(&T, &mut W)>);
-// pub struct EventHandler<T, W>(fn(&T, &mut W) -> ());
-// impl<T, W> EventHandler<T, W> {
-//     fn execute(&self, event: &T, env: &mut W) {
-//         self.0(event, env);
-//     }
-// }
-
-// pub trait IntoHandler<T, W, M> {
-//     fn handler(self) -> EventHandler<T, W>;
-// }
