@@ -11,7 +11,7 @@ fn main() {
 
     // let handler = EventHandler(Box::new(|ev: &u32, w: &mut World| println!("W:
     // {ev}")));
-    let handler = |ev: &u32, w: &mut World| println!("W: {ev}");
+    let handler = |ev: &u32, w: &World| println!("W: {ev}");
     let g_handler = |ev: &u32, w: &mut (&mut Graphics, &World)| {
         w.0 .0 += 1;
         println!("G: {ev} {}", w.0 .0);
@@ -25,7 +25,7 @@ fn main() {
     // g_bus.add_handler(g_handler);
 
     bus.send(3_u32);
-    bus.step(&mut world);
+    bus.step(&world);
     bus.send(7_u32);
 
     // g_bus.step(&mut (&mut graphics, &world));
