@@ -1,4 +1,4 @@
-use wunderkammer::events::Mut;
+use wunderkammer::events::markers::Mut;
 use wunderkammer::prelude::{event_bus, EventSubscriber};
 
 struct World(u32);

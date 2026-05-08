@@ -7,6 +7,8 @@ use std::{
     },
 };
 
+pub mod markers;
+
 struct ScheduledEvent(TypeId, Box<dyn Any>);
 
 pub fn event_bus<W>() -> EventSubscriber<W> {
@@ -19,7 +21,7 @@ pub fn event_bus<W>() -> EventSubscriber<W> {
     }
 }
 
-pub struct EventSubscriber<C, M = Mut> {
+pub struct EventSubscriber<C, M = markers::Mut> {
     queue: Arc<Mutex<EventQueue>>,
     handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M>>>>,
     front: Arc<AtomicUsize>,
@@ -33,10 +35,10 @@ impl<C, M> EventSubscriber<C, M> {
             front,
         }
     }
-    pub fn add_handler<F, T>(&mut self, handler: F)
+    pub fn add_handler<F, T, N>(&mut self, handler: F)
     where
         C: Context<M>,
-        F: IntoHandler<F, T, C, M>,
+        F: IntoHandler<F, T, C, M, N>,
         T: 'static,
     {
         let wrapper = handler.wrap();
@@ -93,6 +95,9 @@ impl EventQueue {
         if self.subscriber_fronts.is_empty() {
             return;
         }
+
+        // The typical subscriber count will be quite low (e.g. 3 - 5kj)
+        // Keeping double iteration for simplicity.
         let min = self.subscriber_fronts.iter().fold(usize::MAX, |acc, s| {
             s.upgrade()
                 .map(|f| f.load(Ordering::Relaxed))
@@ -102,6 +107,7 @@ impl EventQueue {
         if min == 0 {
             return;
         }
+
         for i in (0..self.subscriber_fronts.len()).rev() {
             if let Some(f) = self.subscriber_fronts[i].upgrade() {
                 f.fetch_sub(min, Ordering::Relaxed);
@@ -113,7 +119,7 @@ impl EventQueue {
     }
 }
 
-pub trait Context<M = Mut> {
+pub trait Context<M = markers::Mut> {
     type Borrow<'a>
     where
         Self: 'a;
@@ -122,9 +128,6 @@ pub trait Context<M = Mut> {
     where
         'a: 'b;
 }
-
-pub struct Ref;
-pub struct Mut;
 
 impl<C> Context for C {
     type Borrow<'a>
@@ -139,7 +142,7 @@ impl<C> Context for C {
         &mut **cx
     }
 }
-impl<C> Context<Ref> for C {
+impl<C> Context<markers::Ref> for C {
     type Borrow<'a>
         = &'a C
     where
@@ -152,7 +155,7 @@ impl<C> Context<Ref> for C {
         &**cx
     }
 }
-impl<C, D> Context<(Mut, Mut)> for (C, D) {
+impl<C, D> Context<(markers::Mut, markers::Mut)> for (C, D) {
     type Borrow<'a>
         = (&'a mut C, &'a mut D)
     where
@@ -187,13 +190,28 @@ where
     }
 }
 
-pub trait IntoHandler<F, T, C, M>
+pub trait IntoHandler<F, T, C, M, N>
 where
     C: Context<M>,
 {
     fn wrap(self) -> HandlerWrapper<impl for<'a> Fn(&T, C::Borrow<'a>) + 'static, T>;
 }
-impl<F, T, C, M> IntoHandler<F, T, C, M> for F
+
+impl<F, T, C, M> IntoHandler<F, T, C, M, markers::EventOnlyMarker> for F
+where
+    C: Context<M>,
+    F: Fn(&T) + 'static,
+    T: 'static,
+{
+    fn wrap(self) -> HandlerWrapper<impl for<'a> Fn(&T, C::Borrow<'a>) + 'static, T> {
+        let f = move |arg: &T, _: C::Borrow<'_>| self(arg);
+        HandlerWrapper {
+            f,
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithContextMarker> for F
 where
     C: Context<M>,
     F: Fn(&T, C::Borrow<'_>) + 'static,
