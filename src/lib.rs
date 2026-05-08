@@ -9,7 +9,7 @@ pub mod storage;
 pub mod prelude {
     use super::*;
 
-    pub use events::{event_bus, EventSubscriber};
+    pub use events::{event_bus, EventDispatcher, EventSender, EventSubscriber};
 
     #[cfg(feature = "storage")]
     pub use super::{insert, query, query_execute, query_iter};

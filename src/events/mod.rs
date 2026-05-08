@@ -7,9 +7,19 @@ use std::{
     },
 };
 
+mod context;
 pub mod markers;
 
-struct ScheduledEvent(TypeId, Box<dyn Any>);
+use context::Context;
+
+struct ScheduledEvent(TypeId, Arc<dyn Any + Send + Sync>);
+impl ScheduledEvent {
+    fn new<T: Send + Sync + 'static>(ev: T) -> Self {
+        ScheduledEvent(TypeId::of::<T>(), Arc::new(ev))
+    }
+}
+
+type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
 pub fn event_bus<W>() -> EventSubscriber<W> {
     let mut queue = EventQueue::new();
@@ -23,10 +33,10 @@ pub fn event_bus<W>() -> EventSubscriber<W> {
 
 pub struct EventSubscriber<C, M = markers::Mut> {
     queue: Arc<Mutex<EventQueue>>,
-    handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M>>>>,
+    handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M> + Send>>>,
     front: Arc<AtomicUsize>,
 }
-impl<C, M> EventSubscriber<C, M> {
+impl<C: Send, M: Send> EventSubscriber<C, M> {
     pub fn spawn_subscriber<D, N>(&self) -> EventSubscriber<D, N> {
         let front = self.queue.lock().unwrap().subscribe();
         EventSubscriber {
@@ -39,7 +49,7 @@ impl<C, M> EventSubscriber<C, M> {
     where
         C: Context<M>,
         F: IntoHandler<F, T, C, M, N>,
-        T: 'static,
+        T: Send + Sync + 'static,
     {
         let wrapper = handler.wrap();
         self.handlers
@@ -47,31 +57,62 @@ impl<C, M> EventSubscriber<C, M> {
             .or_insert(vec![])
             .push(Box::new(wrapper));
     }
-    pub fn send<T: 'static>(&self, event: T) {
+    pub fn send<T: Sync + Send + 'static>(&self, ev: T) {
         self.queue
             .lock()
             .unwrap()
             .inner
-            .push_back(ScheduledEvent(TypeId::of::<T>(), Box::new(event)));
+            .push_back(ScheduledEvent::new(ev));
     }
-    pub fn step<'a>(&mut self, mut cx: C::Borrow<'a>)
+    pub fn step<'a>(&mut self, mut cx: C::Borrow<'a>) -> bool
     where
         C: Context<M>,
     {
-        let mut queue = self.queue.lock().unwrap();
-
-        let Some(front) = queue.inner.get(self.front.load(Ordering::Relaxed)) else {
-            return;
+        let (type_id, arg) = match self
+            .queue
+            .lock()
+            .unwrap()
+            .inner
+            .get(self.front.load(Ordering::Relaxed))
+        {
+            Some(ScheduledEvent(t, a)) => (*t, Arc::clone(a)),
+            None => return false,
         };
-        self.front.fetch_add(1, Ordering::Relaxed);
 
-        if let Some(handlers) = self.handlers.get(&front.0) {
+        self.front.fetch_add(1, Ordering::Relaxed);
+        let mut sender = EventSender::default();
+
+        if let Some(handlers) = self.handlers.get(&type_id) {
             for h in handlers.iter() {
-                h.handle(&*front.1, C::borrow(&mut cx));
+                if let Err(e) = h.handle(&*arg, C::borrow(&mut cx), &mut sender) {
+                    #[cfg(feature = "log")]
+                    log::debug!("Handler failed: {e}");
+                }
             }
         };
 
+        let mut queue = self.queue.lock().unwrap();
         queue.synchronize();
+        queue.inner.extend(sender.0);
+        true
+    }
+}
+
+pub trait EventDispatcher {
+    fn send<T: Send + Sync + 'static>(&mut self, ev: T);
+}
+
+impl<C: Send, M: Send> EventDispatcher for EventSubscriber<C, M> {
+    fn send<T: Send + Sync + 'static>(&mut self, ev: T) {
+        EventSubscriber::send(self, ev);
+    }
+}
+
+#[derive(Default)]
+pub struct EventSender(Vec<ScheduledEvent>);
+impl EventDispatcher for EventSender {
+    fn send<T: Send + Sync + 'static>(&mut self, ev: T) {
+        self.0.push(ScheduledEvent::new(ev));
     }
 }
 
@@ -92,85 +133,46 @@ impl EventQueue {
         front
     }
     fn synchronize(&mut self) {
-        if self.subscriber_fronts.is_empty() {
-            return;
-        }
-
         // The typical subscriber count will be quite low (e.g. 3 - 5kj)
         // Keeping double iteration for simplicity.
-        let min = self.subscriber_fronts.iter().fold(usize::MAX, |acc, s| {
-            s.upgrade()
-                .map(|f| f.load(Ordering::Relaxed))
-                .unwrap_or(usize::MAX)
-                .min(acc)
-        });
-        if min == 0 {
+
+        let mut min = usize::MAX;
+
+        for i in (0..self.subscriber_fronts.len()).rev() {
+            match self.subscriber_fronts[i].upgrade() {
+                None => {
+                    // Dropped, remove.
+                    self.subscriber_fronts.remove(i);
+                }
+                Some(f) => {
+                    min = min.min(f.load(Ordering::Relaxed));
+                }
+            }
+        }
+
+        if min == 0 || min == usize::MAX {
+            // No synchronization is needed.
             return;
         }
 
-        for i in (0..self.subscriber_fronts.len()).rev() {
-            if let Some(f) = self.subscriber_fronts[i].upgrade() {
+        self.subscriber_fronts.iter().for_each(|f| {
+            if let Some(f) = f.upgrade() {
+                // Subtraction should be safe as fronts are only increased
+                // in other parts of the code.
                 f.fetch_sub(min, Ordering::Relaxed);
-            } else {
-                self.subscriber_fronts.remove(i);
             }
-        }
+        });
         self.inner.drain(..min);
     }
 }
 
-pub trait Context<M = markers::Mut> {
-    type Borrow<'a>
-    where
-        Self: 'a;
-
-    fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
-    where
-        'a: 'b;
-}
-
-impl<C> Context for C {
-    type Borrow<'a>
-        = &'a mut C
-    where
-        Self: 'a;
-
-    fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
-    where
-        'a: 'b,
-    {
-        &mut **cx
-    }
-}
-impl<C> Context<markers::Ref> for C {
-    type Borrow<'a>
-        = &'a C
-    where
-        Self: 'a;
-
-    fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
-    where
-        'a: 'b,
-    {
-        &**cx
-    }
-}
-impl<C, D> Context<(markers::Mut, markers::Mut)> for (C, D) {
-    type Borrow<'a>
-        = (&'a mut C, &'a mut D)
-    where
-        Self: 'a;
-
-    fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
-    where
-        'a: 'b,
-    {
-        (&mut *cx.0, &mut *cx.1)
-    }
-}
-
-trait Handler<C: Context<M>, M> {
-    fn handle<'a>(&self, arg: &dyn Any, cx: C::Borrow<'a>);
+trait Handler<C: Context<M> + Send, M: Send> {
+    fn handle<'a>(
+        &self,
+        arg: &dyn Any,
+        cx: C::Borrow<'a>,
+        sender: &mut EventSender,
+    ) -> HandlerResult;
 }
 
 pub struct HandlerWrapper<F, T> {
@@ -180,44 +182,109 @@ pub struct HandlerWrapper<F, T> {
 
 impl<F, T, C, M> Handler<C, M> for HandlerWrapper<F, T>
 where
-    C: Context<M>,
-    F: Fn(&T, C::Borrow<'_>),
-    T: 'static,
+    C: Context<M> + Send,
+    M: Send,
+    F: Fn(&T, C::Borrow<'_>, &mut EventSender) -> HandlerResult,
+    T: Send + Sync + 'static,
 {
-    fn handle<'a>(&self, arg: &dyn Any, cx: C::Borrow<'a>) {
+    fn handle<'a>(
+        &self,
+        arg: &dyn Any,
+        cx: C::Borrow<'a>,
+        sender: &mut EventSender,
+    ) -> HandlerResult {
         let arg = arg.downcast_ref().unwrap();
-        (self.f)(arg, cx);
+        (self.f)(arg, cx, sender)
     }
 }
 
 pub trait IntoHandler<F, T, C, M, N>
 where
-    C: Context<M>,
+    C: Context<M> + Send,
+    M: Send,
+    T: Send + Sync + 'static,
 {
-    fn wrap(self) -> HandlerWrapper<impl for<'a> Fn(&T, C::Borrow<'a>) + 'static, T>;
+    fn wrap(
+        self,
+    ) -> HandlerWrapper<
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        T,
+    >;
 }
 
-impl<F, T, C, M> IntoHandler<F, T, C, M, markers::EventOnlyMarker> for F
+impl<F, T, C, M> IntoHandler<F, T, C, M, markers::EventOnly> for F
 where
-    C: Context<M>,
-    F: Fn(&T) + 'static,
-    T: 'static,
+    C: Context<M> + Send,
+    M: Send,
+    F: Fn(&T) -> HandlerResult + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    fn wrap(self) -> HandlerWrapper<impl for<'a> Fn(&T, C::Borrow<'a>) + 'static, T> {
-        let f = move |arg: &T, _: C::Borrow<'_>| self(arg);
+    fn wrap(
+        self,
+    ) -> HandlerWrapper<
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        T,
+    > {
+        let f = move |arg: &T, _: C::Borrow<'_>, _: &mut EventSender| self(arg);
         HandlerWrapper {
             f,
             _marker: std::marker::PhantomData,
         }
     }
 }
-impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithContextMarker> for F
+impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithContext> for F
 where
-    C: Context<M>,
-    F: Fn(&T, C::Borrow<'_>) + 'static,
-    T: 'static,
+    C: Context<M> + Send,
+    M: Send,
+    F: Fn(&T, C::Borrow<'_>) -> HandlerResult + Send + 'static,
+    T: Send + Sync + 'static,
 {
-    fn wrap(self) -> HandlerWrapper<impl for<'a> Fn(&T, C::Borrow<'a>) + 'static, T> {
+    fn wrap(
+        self,
+    ) -> HandlerWrapper<
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        T,
+    > {
+        let f = move |arg: &T, cx: C::Borrow<'_>, _: &mut EventSender| self(arg, cx);
+        HandlerWrapper {
+            f,
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithSender> for F
+where
+    C: Context<M> + Send,
+    M: Send,
+    F: Fn(&T, &mut EventSender) -> HandlerResult + Send + 'static,
+    T: Send + Sync + 'static,
+{
+    fn wrap(
+        self,
+    ) -> HandlerWrapper<
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        T,
+    > {
+        let f = move |arg: &T, _: C::Borrow<'_>, sender: &mut EventSender| self(arg, sender);
+        HandlerWrapper {
+            f,
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithContextAndSender> for F
+where
+    C: Context<M> + Send,
+    M: Send,
+    F: Fn(&T, C::Borrow<'_>, &mut EventSender) -> HandlerResult + Send + 'static,
+    T: Send + Sync + 'static,
+{
+    fn wrap(
+        self,
+    ) -> HandlerWrapper<
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        T,
+    > {
         HandlerWrapper {
             f: self,
             _marker: std::marker::PhantomData,
