@@ -19,13 +19,13 @@ pub fn event_bus<W>() -> EventSubscriber<W> {
     }
 }
 
-pub struct EventSubscriber<W> {
+pub struct EventSubscriber<C, M = Mut> {
     queue: Arc<Mutex<EventQueue>>,
-    handlers: HashMap<TypeId, Vec<Box<dyn Handler<W>>>>,
+    handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M>>>>,
     front: Arc<AtomicUsize>,
 }
-impl<W> EventSubscriber<W> {
-    pub fn spawn_subscriber<U>(&self) -> EventSubscriber<U> {
+impl<C, M> EventSubscriber<C, M> {
+    pub fn spawn_subscriber<D, N>(&self) -> EventSubscriber<D, N> {
         let front = self.queue.lock().unwrap().subscribe();
         EventSubscriber {
             queue: self.queue.clone(),
@@ -35,8 +35,8 @@ impl<W> EventSubscriber<W> {
     }
     pub fn add_handler<F, T>(&mut self, handler: F)
     where
-        F: IntoWrapper<F, T, W>,
-        W: HandlerEnv,
+        C: Context<M>,
+        F: IntoHandler<F, T, C, M>,
         T: 'static,
     {
         let wrapper = handler.wrap();
@@ -52,9 +52,9 @@ impl<W> EventSubscriber<W> {
             .inner
             .push_back(ScheduledEvent(TypeId::of::<T>(), Box::new(event)));
     }
-    pub fn step(&mut self, mut env: W)
+    pub fn step<'a>(&mut self, mut cx: C::Borrow<'a>)
     where
-        W: HandlerEnv,
+        C: Context<M>,
     {
         let mut queue = self.queue.lock().unwrap();
 
@@ -64,18 +64,9 @@ impl<W> EventSubscriber<W> {
         self.front.fetch_add(1, Ordering::Relaxed);
 
         if let Some(handlers) = self.handlers.get(&front.0) {
-            // let handler = handlers.first().unwrap().as_ref();
-            // handler.handle(&*front.1, env);
-            // env.accept(&*front.1, handlers.first().unwrap().as_ref());
-            // env.accept_handlers(&*front.1, handlers.iter());
             for h in handlers.iter() {
-                h.handle(&*front.1, &mut env);
-                // env.accept(&*front.1, h.as_ref());
-                // env.accept(&*front.1, h.as_ref());
+                h.handle(&*front.1, C::borrow(&mut cx));
             }
-            // handlers
-            //     .iter()
-            //     .for_each(|h| h.handle(&*front.1, env.borrow()));
         };
 
         queue.synchronize();
@@ -122,104 +113,95 @@ impl EventQueue {
     }
 }
 
-trait HandlerEnv {
-    type Env<'a>
+pub trait Context<M = Mut> {
+    type Borrow<'a>
     where
         Self: 'a;
 
-    fn borrow<'a>(&'a mut self) -> Self::Env<'a>;
+    fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
+    where
+        'a: 'b;
 }
-impl<'b, W> HandlerEnv for &'b W {
-    type Env<'a>
-        = &'a W
+
+pub struct Ref;
+pub struct Mut;
+
+impl<C> Context for C {
+    type Borrow<'a>
+        = &'a mut C
     where
         Self: 'a;
 
-    fn borrow<'a>(&'a mut self) -> Self::Env<'a> {
-        &**self
+    fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
+    where
+        'a: 'b,
+    {
+        &mut **cx
     }
 }
-// impl<'b, W> HandlerEnv for &'b mut W {
-//     type Env = &'b mut W;
+impl<C> Context<Ref> for C {
+    type Borrow<'a>
+        = &'a C
+    where
+        Self: 'a;
 
-//     fn borrow<'a>(&'a mut self) -> Self::Env {
-//         &mut **self
-//     }
-// }
+    fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
+    where
+        'a: 'b,
+    {
+        &**cx
+    }
+}
+impl<C, D> Context<(Mut, Mut)> for (C, D) {
+    type Borrow<'a>
+        = (&'a mut C, &'a mut D)
+    where
+        Self: 'a;
 
-// impl<'a: 'b, 'b, W> HandlerEnv<'a, 'b, &'b mut W> for &'b mut W {
-//     fn borrow(&mut self) -> &'b mut W {
-//         &mut **self
-//     }
-// }
-
-// impl<'a, W> HandlerEnv<'a, &'a mut W> for &'a mut W {
-//     // fn borrow(&'a mut self) -> &'a mut W {
-//     //     self
-//     //     // &mut **self
-//     // }
-//     fn accept(&'a mut self, arg: &dyn Any, handler: &dyn Handler<&'a mut W>)
-// {         handler.handle(arg, &mut **self);
-//     }
-// }
-// impl<'a, W: 'a> HandlerEnv for &'a mut W {
-//     // type Target = &'a mut W;
-
-//     fn accept(&mut self, arg: &dyn Any, handler: &dyn Handler<&mut W>) {
-//         handler.handle(arg, *self);
-//     }
-// }
-// impl<'a, W: 'a> HandlerEnv<'a, &'a mut W> for &'a mut W {
-// fn accept_handlers(
-//     self,
-//     arg: &dyn Any,
-//     handlers: impl IntoIterator<Item = &'a Box<dyn Handler<&'a mut W>>>,
-// ) {
-//     for handler in handlers {
-//         // handler.handle(arg, self);
-//         println!("Ref");
-//     }
-// }
-// }
-// impl<'a, W> HandlerEnv<'a, W> for &mut W {
-//     fn accept_handlers(self, arg: &dyn Any, handlers: impl Iterator<Item =
-// &'a impl Handler<W>>) {         println!("Ref mut");
-//     }
-// }
-
-trait Handler<W: HandlerEnv> {
-    fn handle(&self, arg: &dyn Any, env: &mut W);
+    fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
+    where
+        'a: 'b,
+    {
+        (&mut *cx.0, &mut *cx.1)
+    }
 }
 
-struct HandlerWrapper<F, T> {
+trait Handler<C: Context<M>, M> {
+    fn handle<'a>(&self, arg: &dyn Any, cx: C::Borrow<'a>);
+}
+
+pub struct HandlerWrapper<F, T> {
     f: F,
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<F, T, W> Handler<W> for HandlerWrapper<F, T>
+impl<F, T, C, M> Handler<C, M> for HandlerWrapper<F, T>
 where
-    W: HandlerEnv,
-    F: Fn(&T, W),
+    C: Context<M>,
+    F: Fn(&T, C::Borrow<'_>),
     T: 'static,
 {
-    fn handle(&self, arg: &dyn Any, env: &mut W) {
-        // let arg = arg.downcast_ref().unwrap();
-        // (self.f)(arg, env);
+    fn handle<'a>(&self, arg: &dyn Any, cx: C::Borrow<'a>) {
+        let arg = arg.downcast_ref().unwrap();
+        (self.f)(arg, cx);
     }
 }
 
-trait IntoWrapper<F, T, W> {
-    fn wrap(self) -> HandlerWrapper<impl Fn(&T, W) + 'static, T>;
-}
-impl<F, T, W> IntoWrapper<F, T, W> for F
+pub trait IntoHandler<F, T, C, M>
 where
-    F: Fn(&T, W) + 'static,
+    C: Context<M>,
+{
+    fn wrap(self) -> HandlerWrapper<impl for<'a> Fn(&T, C::Borrow<'a>) + 'static, T>;
+}
+impl<F, T, C, M> IntoHandler<F, T, C, M> for F
+where
+    C: Context<M>,
+    F: Fn(&T, C::Borrow<'_>) + 'static,
     T: 'static,
 {
-    fn wrap(self) -> HandlerWrapper<impl Fn(&T, W) + 'static, T> {
-        let f = move |arg: &T, env: W| self(arg, env);
+    fn wrap(self) -> HandlerWrapper<impl for<'a> Fn(&T, C::Borrow<'a>) + 'static, T> {
         HandlerWrapper {
-            f,
+            f: self,
             _marker: std::marker::PhantomData,
         }
     }
