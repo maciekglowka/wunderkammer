@@ -1,6 +1,6 @@
 use wunderkammer::events::markers::Mut;
 use wunderkammer::events::EventDispatcher;
-use wunderkammer::prelude::{event_bus, EventSender, EventSubscriber};
+use wunderkammer::prelude::{BusHandle, EventSender};
 
 struct World(u32);
 struct Graphics(u32);
@@ -8,8 +8,8 @@ struct Graphics(u32);
 fn main() {
     let mut world = World(0);
     let mut graphics = Graphics(0);
-    let mut bus: EventSubscriber<World> = event_bus();
-    let mut g_bus: EventSubscriber<(Graphics, World), (Mut, Mut)> = bus.spawn_subscriber();
+    let mut bus: BusHandle<World> = BusHandle::default();
+    let mut g_bus: BusHandle<(Graphics, World), (Mut, Mut)> = bus.spawn_handle();
 
     let handler = |ev: &u32, w: &mut World| {
         println!("W: {ev}");

@@ -19,27 +19,20 @@ impl ScheduledEvent {
     }
 }
 
-type HandlerResult = Result<(), Box<dyn std::error::Error>>;
+pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
-pub fn event_bus<W>() -> EventSubscriber<W> {
-    let mut queue = EventQueue::new();
-    let front = queue.subscribe();
-    EventSubscriber {
-        queue: Arc::new(Mutex::new(queue)),
-        handlers: HashMap::new(),
-        front,
-    }
-}
-
-pub struct EventSubscriber<C, M = markers::Mut> {
+pub struct BusHandle<C, M = markers::Mut> {
     queue: Arc<Mutex<EventQueue>>,
     handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M> + Send>>>,
     front: Arc<AtomicUsize>,
 }
-impl<C: Send, M: Send> EventSubscriber<C, M> {
-    pub fn spawn_subscriber<D, N>(&self) -> EventSubscriber<D, N> {
+impl<C: Send, M: Send> BusHandle<C, M> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn spawn_handle<D, N>(&self) -> BusHandle<D, N> {
         let front = self.queue.lock().unwrap().subscribe();
-        EventSubscriber {
+        BusHandle {
             queue: self.queue.clone(),
             handlers: HashMap::new(),
             front,
@@ -97,14 +90,25 @@ impl<C: Send, M: Send> EventSubscriber<C, M> {
         true
     }
 }
+impl<C, M> Default for BusHandle<C, M> {
+    fn default() -> Self {
+        let mut queue = EventQueue::default();
+        let front = queue.subscribe();
+        BusHandle {
+            queue: Arc::new(Mutex::new(queue)),
+            handlers: HashMap::new(),
+            front,
+        }
+    }
+}
 
 pub trait EventDispatcher {
     fn send<T: Send + Sync + 'static>(&mut self, ev: T);
 }
 
-impl<C: Send, M: Send> EventDispatcher for EventSubscriber<C, M> {
+impl<C: Send, M: Send> EventDispatcher for BusHandle<C, M> {
     fn send<T: Send + Sync + 'static>(&mut self, ev: T) {
-        EventSubscriber::send(self, ev);
+        BusHandle::send(self, ev);
     }
 }
 
@@ -116,17 +120,12 @@ impl EventDispatcher for EventSender {
     }
 }
 
+#[derive(Default)]
 struct EventQueue {
     inner: VecDeque<ScheduledEvent>,
     subscriber_fronts: Vec<Weak<AtomicUsize>>,
 }
 impl EventQueue {
-    fn new() -> Self {
-        Self {
-            inner: VecDeque::new(),
-            subscriber_fronts: Vec::new(),
-        }
-    }
     fn subscribe(&mut self) -> Arc<AtomicUsize> {
         let front = Arc::new(AtomicUsize::new(self.inner.len()));
         self.subscriber_fronts.push(Arc::downgrade(&front));
