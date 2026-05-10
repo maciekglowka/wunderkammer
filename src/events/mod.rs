@@ -89,6 +89,43 @@ impl<C: Send, M: Send> BusHandle<C, M> {
         queue.inner.extend(sender.0);
         true
     }
+    pub fn step_all_current<'a>(&mut self, mut cx: C::Borrow<'a>) -> bool
+    where
+        C: Context<M>,
+    {
+        let events = self
+            .queue
+            .lock()
+            .unwrap()
+            .inner
+            .range(self.front.load(Ordering::Relaxed)..)
+            .map(|ScheduledEvent(t, a)| (*t, Arc::clone(a)))
+            .collect::<Vec<_>>();
+
+        if events.is_empty() {
+            return false;
+        }
+
+        self.front.fetch_add(events.len(), Ordering::Relaxed);
+        let mut sender = EventSender::default();
+
+        for (type_id, arg) in events.iter() {
+            let Some(handlers) = self.handlers.get(type_id) else {
+                continue;
+            };
+            for h in handlers.iter() {
+                if let Err(e) = h.handle(&**arg, C::borrow(&mut cx), &mut sender) {
+                    #[cfg(feature = "log")]
+                    log::debug!("Handler failed: {e}");
+                }
+            }
+        }
+
+        let mut queue = self.queue.lock().unwrap();
+        queue.synchronize();
+        queue.inner.extend(sender.0);
+        true
+    }
 }
 impl<C, M> Default for BusHandle<C, M> {
     fn default() -> Self {
@@ -177,6 +214,7 @@ trait Handler<C: Context<M> + Send, M: Send> {
 pub struct HandlerWrapper<F, T> {
     f: F,
     _marker: std::marker::PhantomData<T>,
+    f_name: &'static str,
 }
 
 impl<F, T, C, M> Handler<C, M> for HandlerWrapper<F, T>
@@ -192,6 +230,12 @@ where
         cx: C::Borrow<'a>,
         sender: &mut EventSender,
     ) -> HandlerResult {
+        #[cfg(feature = "log")]
+        log::debug!(
+            "Executing handler {} for: {}",
+            self.f_name,
+            std::any::type_name::<T>()
+        );
         let arg = arg.downcast_ref().unwrap();
         (self.f)(arg, cx, sender)
     }
@@ -224,9 +268,11 @@ where
         impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
         T,
     > {
+        let f_name = std::any::type_name_of_val(&self);
         let f = move |arg: &T, _: C::Borrow<'_>, _: &mut EventSender| self(arg);
         HandlerWrapper {
             f,
+            f_name,
             _marker: std::marker::PhantomData,
         }
     }
@@ -244,9 +290,11 @@ where
         impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
         T,
     > {
+        let f_name = std::any::type_name_of_val(&self);
         let f = move |arg: &T, cx: C::Borrow<'_>, _: &mut EventSender| self(arg, cx);
         HandlerWrapper {
             f,
+            f_name,
             _marker: std::marker::PhantomData,
         }
     }
@@ -264,9 +312,11 @@ where
         impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
         T,
     > {
+        let f_name = std::any::type_name_of_val(&self);
         let f = move |arg: &T, _: C::Borrow<'_>, sender: &mut EventSender| self(arg, sender);
         HandlerWrapper {
             f,
+            f_name,
             _marker: std::marker::PhantomData,
         }
     }
@@ -285,6 +335,7 @@ where
         T,
     > {
         HandlerWrapper {
+            f_name: std::any::type_name_of_val(&self),
             f: self,
             _marker: std::marker::PhantomData,
         }
