@@ -77,6 +77,7 @@ impl<C: Send, M: Send> BusHandle<C, M> {
 
         if let Some(handlers) = self.handlers.get(&type_id) {
             for h in handlers.iter() {
+                #[allow(unused_variables)]
                 if let Err(e) = h.handle(&*arg, C::borrow(&mut cx), &mut sender) {
                     #[cfg(feature = "log")]
                     log::debug!("Handler failed: {e}");
@@ -114,6 +115,7 @@ impl<C: Send, M: Send> BusHandle<C, M> {
                 continue;
             };
             for h in handlers.iter() {
+                #[allow(unused_variables)]
                 if let Err(e) = h.handle(&**arg, C::borrow(&mut cx), &mut sender) {
                     #[cfg(feature = "log")]
                     log::debug!("Handler failed: {e}");
@@ -214,6 +216,7 @@ trait Handler<C: Context<M> + Send, M: Send> {
 pub struct HandlerWrapper<F, T> {
     f: F,
     _marker: std::marker::PhantomData<T>,
+    #[allow(dead_code)]
     f_name: &'static str,
 }
 
