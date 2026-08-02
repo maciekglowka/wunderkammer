@@ -26,7 +26,7 @@ pub struct BusHandle<C, M = markers::Mut> {
     handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M> + Send>>>,
     front: Arc<AtomicUsize>,
 }
-impl<C: Send, M: Send> BusHandle<C, M> {
+impl<C: Context<M> + Send, M: Send> BusHandle<C, M> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -38,17 +38,37 @@ impl<C: Send, M: Send> BusHandle<C, M> {
             front,
         }
     }
-    pub fn add_handler<F, T, N>(&mut self, handler: F)
+    pub fn add_handler<F, T, N>(&mut self, handler: F) -> HandlerId
     where
         C: Context<M>,
         F: IntoHandler<F, T, C, M, N>,
         T: Send + Sync + 'static,
     {
         let wrapper = handler.wrap();
+        let id = HandlerId {
+            arg_id: TypeId::of::<T>(),
+            f_id: wrapper.f_id,
+        };
         self.handlers
             .entry(TypeId::of::<T>())
             .or_insert(vec![])
             .push(Box::new(wrapper));
+
+        id
+    }
+    /// Remove a handler by id.
+    /// If the same function has been registered more than once
+    /// all instances will be removed.
+    ///
+    /// Returns a number of removed handlers.
+    pub fn remove_handler(&mut self, handler_id: HandlerId) -> usize {
+        if let Some(entry) = self.handlers.get_mut(&handler_id.arg_id) {
+            entry
+                .extract_if(.., |h| h.f_id() == handler_id.f_id)
+                .count()
+        } else {
+            0
+        }
     }
     pub fn send<T: Sync + Send + 'static>(&self, ev: T) {
         self.queue
@@ -145,7 +165,7 @@ pub trait EventDispatcher {
     fn send<T: Send + Sync + 'static>(&mut self, ev: T);
 }
 
-impl<C: Send, M: Send> EventDispatcher for BusHandle<C, M> {
+impl<C: Context<M> + Send, M: Send> EventDispatcher for BusHandle<C, M> {
     fn send<T: Send + Sync + 'static>(&mut self, ev: T) {
         BusHandle::send(self, ev);
     }
@@ -211,6 +231,13 @@ trait Handler<C: Context<M> + Send, M: Send> {
         cx: C::Borrow<'a>,
         sender: &mut EventSender,
     ) -> HandlerResult;
+    fn f_id(&self) -> TypeId;
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct HandlerId {
+    arg_id: TypeId,
+    f_id: TypeId,
 }
 
 pub struct HandlerWrapper<F, T> {
@@ -218,6 +245,7 @@ pub struct HandlerWrapper<F, T> {
     _marker: std::marker::PhantomData<T>,
     #[allow(dead_code)]
     f_name: &'static str,
+    f_id: TypeId,
 }
 
 impl<F, T, C, M> Handler<C, M> for HandlerWrapper<F, T>
@@ -241,6 +269,9 @@ where
         );
         let arg = arg.downcast_ref().unwrap();
         (self.f)(arg, cx, sender)
+    }
+    fn f_id(&self) -> TypeId {
+        self.f_id
     }
 }
 
@@ -272,10 +303,12 @@ where
         T,
     > {
         let f_name = std::any::type_name_of_val(&self);
+        let f_id = TypeId::of::<F>();
         let f = move |arg: &T, _: C::Borrow<'_>, _: &mut EventSender| self(arg);
         HandlerWrapper {
             f,
             f_name,
+            f_id,
             _marker: std::marker::PhantomData,
         }
     }
@@ -294,10 +327,12 @@ where
         T,
     > {
         let f_name = std::any::type_name_of_val(&self);
+        let f_id = TypeId::of::<F>();
         let f = move |arg: &T, cx: C::Borrow<'_>, _: &mut EventSender| self(arg, cx);
         HandlerWrapper {
             f,
             f_name,
+            f_id,
             _marker: std::marker::PhantomData,
         }
     }
@@ -316,10 +351,12 @@ where
         T,
     > {
         let f_name = std::any::type_name_of_val(&self);
+        let f_id = TypeId::of::<F>();
         let f = move |arg: &T, _: C::Borrow<'_>, sender: &mut EventSender| self(arg, sender);
         HandlerWrapper {
             f,
             f_name,
+            f_id,
             _marker: std::marker::PhantomData,
         }
     }
@@ -339,8 +376,104 @@ where
     > {
         HandlerWrapper {
             f_name: std::any::type_name_of_val(&self),
+            f_id: TypeId::of::<F>(),
             f: self,
             _marker: std::marker::PhantomData,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Default)]
+    struct World(u32);
+
+    fn add(ev: &u32, w: &mut World) -> HandlerResult {
+        w.0 += *ev;
+        Ok(())
+    }
+    fn mul(ev: &u32, w: &mut World) -> HandlerResult {
+        w.0 *= *ev;
+        Ok(())
+    }
+
+    #[test]
+    fn add_handler() {
+        let mut w = World::default();
+        let mut bus: BusHandle<World> = BusHandle::default();
+        bus.add_handler(add);
+
+        bus.send(3_u32);
+        bus.step(&mut w);
+        assert_eq!(w.0, 3);
+    }
+    #[test]
+    fn add_two_handlers() {
+        let mut w = World::default();
+        let mut bus: BusHandle<World> = BusHandle::default();
+        bus.add_handler(add);
+        bus.add_handler(mul);
+
+        bus.send(3_u32);
+        bus.step(&mut w);
+        // Execution order is not guaranteed but in this simple case
+        // should match insertion order.
+        assert_eq!(w.0, 9);
+    }
+    /// This test removes the only handler.
+    #[test]
+    fn remove_handler() {
+        let mut w = World::default();
+        let mut bus: BusHandle<World> = BusHandle::default();
+        let id = bus.add_handler(add);
+
+        bus.send(3_u32);
+        bus.step(&mut w);
+
+        let removed = bus.remove_handler(id);
+        assert_eq!(1, removed);
+
+        bus.send(3_u32);
+        bus.step(&mut w);
+        assert_eq!(w.0, 3);
+    }
+    /// This test removes duplicate handlers.
+    #[test]
+    fn remove_two_handlers() {
+        let mut w = World::default();
+        let mut bus: BusHandle<World> = BusHandle::default();
+
+        let id = bus.add_handler(add);
+        let _ = bus.add_handler(add);
+
+        bus.send(3_u32);
+        bus.step(&mut w);
+
+        let removed = bus.remove_handler(id);
+        assert_eq!(2, removed);
+
+        bus.send(3_u32);
+        bus.step(&mut w);
+        assert_eq!(w.0, 6);
+    }
+    /// This test removes one handler and checks other is left intact.
+    #[test]
+    fn remove_handler_keep() {
+        let mut w = World::default();
+        let mut bus: BusHandle<World> = BusHandle::default();
+        let id = bus.add_handler(add);
+        bus.add_handler(mul);
+
+        bus.send(3_u32);
+        bus.step(&mut w);
+
+        let removed = bus.remove_handler(id);
+        assert_eq!(1, removed);
+
+        bus.send(3_u32);
+        bus.step(&mut w);
+        assert_eq!(w.0, 27);
     }
 }
