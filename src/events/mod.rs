@@ -21,12 +21,18 @@ impl ScheduledEvent {
 
 pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
 
+#[cfg(feature = "send")]
+type StoredHandler<C, M> = Box<dyn Handler<C, M> + Send>;
+#[cfg(not(feature = "send"))]
+type StoredHandler<C, M> = Box<dyn Handler<C, M>>;
+
 pub struct BusHandle<C, M = markers::Mut> {
     queue: Arc<Mutex<EventQueue>>,
-    handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M> + Send>>>,
+    // handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M>>>>,
+    handlers: HashMap<TypeId, Vec<StoredHandler<C, M>>>,
     front: Arc<AtomicUsize>,
 }
-impl<C: Context<M> + Send, M: Send> BusHandle<C, M> {
+impl<C: Context<M> + MaybeSend, M: MaybeSend> BusHandle<C, M> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -165,7 +171,7 @@ pub trait EventDispatcher {
     fn send<T: Send + Sync + 'static>(&mut self, ev: T);
 }
 
-impl<C: Context<M> + Send, M: Send> EventDispatcher for BusHandle<C, M> {
+impl<C: Context<M> + MaybeSend, M: MaybeSend> EventDispatcher for BusHandle<C, M> {
     fn send<T: Send + Sync + 'static>(&mut self, ev: T) {
         BusHandle::send(self, ev);
     }
@@ -224,7 +230,7 @@ impl EventQueue {
     }
 }
 
-trait Handler<C: Context<M> + Send, M: Send> {
+trait Handler<C: Context<M> + MaybeSend, M: MaybeSend> {
     fn handle<'a>(
         &self,
         arg: &dyn Any,
@@ -250,8 +256,8 @@ pub struct HandlerWrapper<F, T> {
 
 impl<F, T, C, M> Handler<C, M> for HandlerWrapper<F, T>
 where
-    C: Context<M> + Send,
-    M: Send,
+    C: Context<M> + MaybeSend,
+    M: MaybeSend,
     F: Fn(&T, C::Borrow<'_>, &mut EventSender) -> HandlerResult,
     T: Send + Sync + 'static,
 {
@@ -277,8 +283,8 @@ where
 
 pub trait IntoHandler<F, T, C, M, N>
 where
-    C: Context<M> + Send,
-    M: Send,
+    C: Context<M> + MaybeSend,
+    M: MaybeSend,
     T: Send + Sync + 'static,
 {
     fn wrap(
@@ -291,8 +297,8 @@ where
 
 impl<F, T, C, M> IntoHandler<F, T, C, M, markers::EventOnly> for F
 where
-    C: Context<M> + Send,
-    M: Send,
+    C: Context<M> + MaybeSend,
+    M: MaybeSend,
     F: Fn(&T) -> HandlerResult + Send + 'static,
     T: Send + Sync + 'static,
 {
@@ -315,8 +321,8 @@ where
 }
 impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithContext> for F
 where
-    C: Context<M> + Send,
-    M: Send,
+    C: Context<M> + MaybeSend,
+    M: MaybeSend,
     F: Fn(&T, C::Borrow<'_>) -> HandlerResult + Send + 'static,
     T: Send + Sync + 'static,
 {
@@ -339,8 +345,8 @@ where
 }
 impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithSender> for F
 where
-    C: Context<M> + Send,
-    M: Send,
+    C: Context<M> + MaybeSend,
+    M: MaybeSend,
     F: Fn(&T, &mut EventSender) -> HandlerResult + Send + 'static,
     T: Send + Sync + 'static,
 {
@@ -363,8 +369,8 @@ where
 }
 impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithContextAndSender> for F
 where
-    C: Context<M> + Send,
-    M: Send,
+    C: Context<M> + MaybeSend,
+    M: MaybeSend,
     F: Fn(&T, C::Borrow<'_>, &mut EventSender) -> HandlerResult + Send + 'static,
     T: Send + Sync + 'static,
 {
@@ -382,6 +388,18 @@ where
         }
     }
 }
+
+#[cfg(feature = "send")]
+pub trait MaybeSend: Send {}
+
+#[cfg(not(feature = "send"))]
+pub trait MaybeSend {}
+
+#[cfg(feature = "send")]
+impl<T: Send> MaybeSend for T {}
+
+#[cfg(not(feature = "send"))]
+impl<T> MaybeSend for T {}
 
 #[cfg(test)]
 mod tests {

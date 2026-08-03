@@ -12,9 +12,10 @@ keywords = ["gamedev", "ecs", "compositioni"]
 categories = ["game-development", "data-structures"]
 
 [features]
-default = ["events", "storage"]
+default = ["events", "storage", "send"]
 events = []
 log = ["dep:log"]
+send = []
 serialize = ["dep:serde"]
 storage = ["dep:wunderkammer_derive"]
 
