@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use wunderkammer::events::markers::Mut;
 use wunderkammer::events::EventDispatcher;
 use wunderkammer::prelude::{BusHandle, EventSender};
@@ -20,7 +22,15 @@ fn main() {
         Ok(())
     };
 
+    let sender = |ev: &u32, w: &mut World, s: &mut EventSender| {
+        s.send(Rc::new(*ev));
+        Ok(())
+    };
+    let non_send_handler = |ev: &Rc<u32>, w: &mut World| Ok(());
+
     bus.add_handler(handler);
+    bus.add_handler(sender);
+    bus.add_handler(non_send_handler);
     gfx_bus.add_handler(gfx_handler);
 
     bus.send(3_u32);

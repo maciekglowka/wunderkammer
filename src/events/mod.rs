@@ -12,23 +12,27 @@ pub mod markers;
 
 use context::Context;
 
-struct ScheduledEvent(TypeId, Arc<dyn Any + Send + Sync>);
+pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
+
+#[cfg(feature = "send")]
+type StoredHandler<C, M> = Box<dyn Handler<C, M> + Send + Sync>;
+#[cfg(not(feature = "send"))]
+type StoredHandler<C, M> = Box<dyn Handler<C, M>>;
+
+#[cfg(feature = "send")]
+type EventInner = Arc<dyn Any + Send + Sync>;
+#[cfg(not(feature = "send"))]
+type EventInner = Arc<dyn Any>;
+
+struct ScheduledEvent(TypeId, EventInner);
 impl ScheduledEvent {
-    fn new<T: Send + Sync + 'static>(ev: T) -> Self {
+    fn new<T: MaybeSendSync + 'static>(ev: T) -> Self {
         ScheduledEvent(TypeId::of::<T>(), Arc::new(ev))
     }
 }
 
-pub type HandlerResult = Result<(), Box<dyn std::error::Error>>;
-
-#[cfg(feature = "send")]
-type StoredHandler<C, M> = Box<dyn Handler<C, M> + Send>;
-#[cfg(not(feature = "send"))]
-type StoredHandler<C, M> = Box<dyn Handler<C, M>>;
-
 pub struct BusHandle<C, M = markers::Mut> {
     queue: Arc<Mutex<EventQueue>>,
-    // handlers: HashMap<TypeId, Vec<Box<dyn Handler<C, M>>>>,
     handlers: HashMap<TypeId, Vec<StoredHandler<C, M>>>,
     front: Arc<AtomicUsize>,
 }
@@ -46,9 +50,8 @@ impl<C: Context<M> + MaybeSend, M: MaybeSend> BusHandle<C, M> {
     }
     pub fn add_handler<F, T, N>(&mut self, handler: F) -> HandlerId
     where
-        C: Context<M>,
         F: IntoHandler<F, T, C, M, N>,
-        T: Send + Sync + 'static,
+        T: MaybeSendSync + 'static,
     {
         let wrapper = handler.wrap();
         let id = HandlerId {
@@ -76,17 +79,14 @@ impl<C: Context<M> + MaybeSend, M: MaybeSend> BusHandle<C, M> {
             0
         }
     }
-    pub fn send<T: Sync + Send + 'static>(&self, ev: T) {
+    pub fn send<T: MaybeSendSync + 'static>(&self, ev: T) {
         self.queue
             .lock()
             .unwrap()
             .inner
             .push_back(ScheduledEvent::new(ev));
     }
-    pub fn step<'a>(&mut self, mut cx: C::Borrow<'a>) -> bool
-    where
-        C: Context<M>,
-    {
+    pub fn step<'a>(&mut self, mut cx: C::Borrow<'a>) -> bool {
         let (type_id, arg) = match self
             .queue
             .lock()
@@ -116,10 +116,7 @@ impl<C: Context<M> + MaybeSend, M: MaybeSend> BusHandle<C, M> {
         queue.inner.extend(sender.0);
         true
     }
-    pub fn step_all_current<'a>(&mut self, mut cx: C::Borrow<'a>) -> bool
-    where
-        C: Context<M>,
-    {
+    pub fn step_all_current<'a>(&mut self, mut cx: C::Borrow<'a>) -> bool {
         let events = self
             .queue
             .lock()
@@ -168,11 +165,11 @@ impl<C, M> Default for BusHandle<C, M> {
 }
 
 pub trait EventDispatcher {
-    fn send<T: Send + Sync + 'static>(&mut self, ev: T);
+    fn send<T: MaybeSendSync + 'static>(&mut self, ev: T);
 }
 
 impl<C: Context<M> + MaybeSend, M: MaybeSend> EventDispatcher for BusHandle<C, M> {
-    fn send<T: Send + Sync + 'static>(&mut self, ev: T) {
+    fn send<T: MaybeSendSync + 'static>(&mut self, ev: T) {
         BusHandle::send(self, ev);
     }
 }
@@ -180,7 +177,7 @@ impl<C: Context<M> + MaybeSend, M: MaybeSend> EventDispatcher for BusHandle<C, M
 #[derive(Default)]
 pub struct EventSender(Vec<ScheduledEvent>);
 impl EventDispatcher for EventSender {
-    fn send<T: Send + Sync + 'static>(&mut self, ev: T) {
+    fn send<T: MaybeSendSync + 'static>(&mut self, ev: T) {
         self.0.push(ScheduledEvent::new(ev));
     }
 }
@@ -197,7 +194,7 @@ impl EventQueue {
         front
     }
     fn synchronize(&mut self) {
-        // The typical subscriber count will be quite low (e.g. 3 - 5kj)
+        // The typical subscriber count will be quite low (e.g. 3 - 5)
         // Keeping double iteration for simplicity.
 
         let mut min = usize::MAX;
@@ -259,7 +256,7 @@ where
     C: Context<M> + MaybeSend,
     M: MaybeSend,
     F: Fn(&T, C::Borrow<'_>, &mut EventSender) -> HandlerResult,
-    T: Send + Sync + 'static,
+    T: MaybeSendSync + 'static,
 {
     fn handle<'a>(
         &self,
@@ -285,12 +282,12 @@ pub trait IntoHandler<F, T, C, M, N>
 where
     C: Context<M> + MaybeSend,
     M: MaybeSend,
-    T: Send + Sync + 'static,
+    T: MaybeSendSync + 'static,
 {
     fn wrap(
         self,
     ) -> HandlerWrapper<
-        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + MaybeSendSync + 'static,
         T,
     >;
 }
@@ -299,13 +296,13 @@ impl<F, T, C, M> IntoHandler<F, T, C, M, markers::EventOnly> for F
 where
     C: Context<M> + MaybeSend,
     M: MaybeSend,
-    F: Fn(&T) -> HandlerResult + Send + 'static,
-    T: Send + Sync + 'static,
+    F: Fn(&T) -> HandlerResult + MaybeSendSync + 'static,
+    T: MaybeSendSync + 'static,
 {
     fn wrap(
         self,
     ) -> HandlerWrapper<
-        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + MaybeSendSync + 'static,
         T,
     > {
         let f_name = std::any::type_name_of_val(&self);
@@ -323,13 +320,13 @@ impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithContext> for F
 where
     C: Context<M> + MaybeSend,
     M: MaybeSend,
-    F: Fn(&T, C::Borrow<'_>) -> HandlerResult + Send + 'static,
-    T: Send + Sync + 'static,
+    F: Fn(&T, C::Borrow<'_>) -> HandlerResult + MaybeSendSync + 'static,
+    T: MaybeSendSync + 'static,
 {
     fn wrap(
         self,
     ) -> HandlerWrapper<
-        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + MaybeSendSync + 'static,
         T,
     > {
         let f_name = std::any::type_name_of_val(&self);
@@ -347,13 +344,13 @@ impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithSender> for F
 where
     C: Context<M> + MaybeSend,
     M: MaybeSend,
-    F: Fn(&T, &mut EventSender) -> HandlerResult + Send + 'static,
-    T: Send + Sync + 'static,
+    F: Fn(&T, &mut EventSender) -> HandlerResult + MaybeSendSync + 'static,
+    T: MaybeSendSync + 'static,
 {
     fn wrap(
         self,
     ) -> HandlerWrapper<
-        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + MaybeSendSync + 'static,
         T,
     > {
         let f_name = std::any::type_name_of_val(&self);
@@ -371,13 +368,13 @@ impl<F, T, C, M> IntoHandler<F, T, C, M, markers::WithContextAndSender> for F
 where
     C: Context<M> + MaybeSend,
     M: MaybeSend,
-    F: Fn(&T, C::Borrow<'_>, &mut EventSender) -> HandlerResult + Send + 'static,
-    T: Send + Sync + 'static,
+    F: Fn(&T, C::Borrow<'_>, &mut EventSender) -> HandlerResult + MaybeSendSync + 'static,
+    T: MaybeSendSync + 'static,
 {
     fn wrap(
         self,
     ) -> HandlerWrapper<
-        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + Send + 'static,
+        impl for<'a> Fn(&T, C::Borrow<'a>, &mut EventSender) -> HandlerResult + MaybeSendSync + 'static,
         T,
     > {
         HandlerWrapper {
@@ -391,15 +388,26 @@ where
 
 #[cfg(feature = "send")]
 pub trait MaybeSend: Send {}
-
 #[cfg(not(feature = "send"))]
 pub trait MaybeSend {}
 
 #[cfg(feature = "send")]
-impl<T: Send> MaybeSend for T {}
-
+impl<T: Send + ?Sized> MaybeSend for T {}
 #[cfg(not(feature = "send"))]
-impl<T> MaybeSend for T {}
+impl<T: ?Sized> MaybeSend for T {}
+
+#[cfg(feature = "send")]
+pub trait MaybeSync: Sync {}
+#[cfg(not(feature = "send"))]
+pub trait MaybeSync {}
+
+#[cfg(feature = "send")]
+impl<T: Sync + ?Sized> MaybeSync for T {}
+#[cfg(not(feature = "send"))]
+impl<T: ?Sized> MaybeSync for T {}
+
+pub trait MaybeSendSync: MaybeSend + MaybeSync {}
+impl<T: MaybeSend + MaybeSync> MaybeSendSync for T {}
 
 #[cfg(test)]
 mod tests {
