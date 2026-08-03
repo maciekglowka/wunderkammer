@@ -1,11 +1,13 @@
 use std::{
     any::{Any, TypeId},
     collections::{HashMap, VecDeque},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc, Mutex, Weak,
-    },
+    sync::{atomic::Ordering, Arc, Weak},
 };
+
+#[cfg(loom)]
+use loom::sync::{atomic::AtomicUsize, Mutex};
+#[cfg(not(loom))]
+use std::sync::{atomic::AtomicUsize, Mutex};
 
 mod context;
 pub mod markers;
@@ -409,6 +411,7 @@ impl<T: ?Sized> MaybeSync for T {}
 pub trait MaybeSendSync: MaybeSend + MaybeSync {}
 impl<T: MaybeSend + MaybeSync> MaybeSendSync for T {}
 
+#[cfg(not(loom))]
 #[cfg(test)]
 mod tests {
     use super::*;

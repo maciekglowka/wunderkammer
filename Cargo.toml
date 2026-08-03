@@ -27,3 +27,6 @@ wunderkammer_derive = { version = "0.1", path = "wunderkammer_derive", optional 
 [dev-dependencies]
 serde_json = "1.0"
 macroquad = "0.4"
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
