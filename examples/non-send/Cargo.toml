@@ -1,0 +1,8 @@
+[package]
+name = "non-send-example"
+version = "0.1.0"
+edition = "2024"
+
+
+[dependencies]
+wunderkammer = { path = "../..", default-features = false, features = ["events"] }

@@ -1,6 +1,9 @@
+// This test is form an older version.
+// Should be redone.
+
 #[cfg(test)]
 mod test_derive {
-    use crate::prelude::*;
+    use wunderkammer::prelude::*;
 
     #[test]
     fn derive() {
@@ -12,13 +15,13 @@ mod test_derive {
         let mut c = C::default();
         let entity = Entity::default();
 
-        c.health.insert(entity, 17);
-        c.name.insert(entity, "Seventeen".to_string());
+        c.health.__insert(entity, 17);
+        c.name.__insert(entity, "Seventeen".to_string());
 
         assert_eq!(c.health.entities().collect::<Vec<_>>().len(), 1);
         assert_eq!(c.name.entities().collect::<Vec<_>>().len(), 1);
 
-        c.despawn(entity);
+        c.remove_all_components(entity);
         assert_eq!(c.health.entities().collect::<Vec<_>>().len(), 0);
         assert_eq!(c.name.entities().collect::<Vec<_>>().len(), 0);
     }

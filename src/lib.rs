@@ -1,12 +1,16 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md"))]
 
-#[cfg(feature = "scheduler")]
-pub mod scheduler;
+#[cfg(feature = "events")]
+pub mod events;
 #[cfg(feature = "storage")]
 pub mod storage;
 
 pub mod prelude {
     use super::*;
+
+    #[cfg(feature = "events")]
+    pub use events::{BusHandle, EventDispatcher, EventSender, HandlerResult};
+
     #[cfg(feature = "storage")]
     pub use super::{insert, query, query_execute, query_iter};
     #[cfg(feature = "storage")]
@@ -17,10 +21,4 @@ pub mod prelude {
     };
     #[cfg(feature = "storage")]
     pub use wunderkammer_derive::ComponentSet;
-
-    #[cfg(feature = "scheduler")]
-    pub use scheduler::{
-        observer::{ObservableQueue, Observer},
-        {EventError, EventHandler, EventResult, Scheduler, SchedulerContext},
-    };
 }
