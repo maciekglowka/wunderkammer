@@ -5,6 +5,8 @@ pub mod events;
 #[cfg(feature = "storage")]
 pub mod storage;
 
+pub mod storage_next;
+
 pub mod prelude {
     use super::*;
 
