@@ -33,6 +33,7 @@ impl<T> ComponentStorage<T> {
         self.dense.iter()
     }
     // Insert a new component for the entity.
+    //
     // Overwrite if already exists.
     // Since it cannot validate the entity,
     // it is recommended to use `insert!` macro that calls it internally.

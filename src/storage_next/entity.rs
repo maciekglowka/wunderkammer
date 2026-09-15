@@ -1,6 +1,7 @@
 // TODO rewrite once settles.
 
 pub type IdSize = u16;
+pub type ComponentFlag = u16;
 
 #[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Entity {
@@ -9,8 +10,9 @@ pub struct Entity {
 }
 
 #[derive(Default)]
-pub struct EntityStorage {
+pub(crate) struct EntityStorage {
     entities: Vec<Entity>,
+    pub(crate) component_flags: Vec<ComponentFlag>,
     last_recycled: Option<IdSize>,
     first_recycled: Option<IdSize>,
 }
