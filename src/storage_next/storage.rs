@@ -3,60 +3,152 @@ use crate::storage_next::entity::{ComponentFlag, EntityStorage};
 use super::components::ComponentStorage;
 use super::entity::Entity;
 
-pub trait Fetch {
-    type Item;
-
-    fn get(&self, entity: &Entity) -> Option<Self::Item>;
-}
-pub unsafe trait FetchMut<'w> {
-    type Item;
-
-    unsafe fn get_mut(&self, entity: &Entity) -> Option<Self::Item>;
-}
-
-impl<'w, A> Fetch for &'w ComponentStorage<A> {
-    type Item = &'w A;
-
-    fn get(&self, entity: &Entity) -> Option<Self::Item> {
-        ComponentStorage::get(self, entity)
-    }
-}
-unsafe impl<'w, A: 'static> FetchMut<'w> for *mut ComponentStorage<A> {
-    type Item = &'w mut A;
-
-    unsafe fn get_mut(&self, entity: &Entity) -> Option<Self::Item> {
-        ComponentStorage::get_mut(self.as_mut_unchecked(), entity)
-    }
-}
-
-impl<A: Fetch, B: Fetch> Fetch for (A, B) {
-    type Item = (A::Item, B::Item);
-
-    fn get(&self, entity: &Entity) -> Option<Self::Item> {
-        Some((self.0.get(entity)?, self.1.get(entity)?))
-    }
-}
-unsafe impl<'w, A: FetchMut<'w>, B: FetchMut<'w>> FetchMut<'w> for (A, B) {
-    type Item = (A::Item, B::Item);
-
-    unsafe fn get_mut(&self, entity: &Entity) -> Option<Self::Item> {
-        Some((self.0.get_mut(entity)?, self.1.get_mut(entity)?))
-    }
-}
-
-pub struct Query<'a, F> {
-    entities: EntityIter<'a>,
-    fetch: F,
-}
-impl<'a, F> Iterator for Query<'a, F>
+trait Fetch<'w, CM>
 where
-    F: Fetch,
+    Self: Sized,
 {
-    type Item = F::Item;
+    fn get(components: &'w CM, entity: &Entity) -> Option<Self>;
+    fn entities(_components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+        None
+    }
+}
+
+impl<'w, A, CM> Fetch<'w, CM> for &'w A
+where
+    CM: ComponentHandler<A>,
+{
+    fn get(components: &'w CM, entity: &Entity) -> Option<Self> {
+        components.storage().get(entity)
+    }
+    fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+        Some(components.storage().entities())
+    }
+}
+impl<'w, A, CM> Fetch<'w, CM> for Option<&'w A>
+where
+    CM: ComponentHandler<A>,
+{
+    fn get(components: &'w CM, entity: &Entity) -> Option<Self> {
+        Some(components.storage().get(entity))
+    }
+}
+impl<'w, CM> Fetch<'w, CM> for Entity {
+    fn get(_components: &'w CM, entity: &Entity) -> Option<Self> {
+        Some(*entity)
+    }
+}
+
+impl<'w, A, B, CM> Fetch<'w, CM> for (A, B)
+where
+    A: Fetch<'w, CM>,
+    B: Fetch<'w, CM>,
+{
+    fn get(components: &'w CM, entity: &Entity) -> Option<Self> {
+        Some((A::get(components, entity)?, B::get(components, entity)?))
+    }
+    fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+        A::entities(components).or_else(|| B::entities(components))
+    }
+}
+
+// trait QueryEntities<'w, CM> {
+//     fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>>;
+// }
+
+// impl<'w, A, CM> QueryEntities<'w, CM> for &'w A
+// where
+//     CM: ComponentHandler<A>,
+// {
+//     fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+//         Some(components.storage().entities())
+//     }
+// }
+
+// impl<'w, A, B, CM> QueryEntities<'w, CM> for (A, B)
+// where
+//     A: QueryEntities<'w, CM>,
+// {
+//     fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+//         A::entities(components)
+//     }
+// }
+
+unsafe trait FetchMut<'w, CM>
+where
+    Self: Sized,
+{
+    unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self>;
+}
+unsafe impl<'w, A, CM> FetchMut<'w, CM> for &'w A
+where
+    CM: ComponentHandler<A>,
+{
+    unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        components.storage().get(entity)
+    }
+}
+unsafe impl<'w, A, CM> FetchMut<'w, CM> for Option<&'w A>
+where
+    CM: ComponentHandler<A>,
+{
+    unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        Some(components.storage().get(entity))
+    }
+}
+unsafe impl<'w, A, CM> FetchMut<'w, CM> for &'w mut A
+where
+    CM: ComponentHandler<A>,
+{
+    unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        components.storage_mut().get_mut(entity)
+    }
+}
+unsafe impl<'w, A, CM> FetchMut<'w, CM> for Option<&'w mut A>
+where
+    CM: ComponentHandler<A>,
+{
+    unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        Some(components.storage_mut().get_mut(entity))
+    }
+}
+unsafe impl<'w, CM> FetchMut<'w, CM> for Entity {
+    unsafe fn get_mut(_components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        Some(*entity)
+    }
+}
+
+unsafe impl<'w, A, B, CM> FetchMut<'w, CM> for (A, B)
+where
+    A: FetchMut<'w, CM>,
+    B: FetchMut<'w, CM>,
+{
+    unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        // FIXME - component collision check
+        let components = &raw mut *components;
+        Some((
+            A::get_mut(components.as_mut_unchecked(), entity)?,
+            B::get_mut(components.as_mut_unchecked(), entity)?,
+        ))
+    }
+}
+
+pub struct Query<'w, F, CM>
+where
+    F: Fetch<'w, CM>,
+{
+    entities: EntityIter<'w>,
+    components: &'w CM,
+    _marker: std::marker::PhantomData<F>,
+}
+impl<'w, F, CM> Iterator for Query<'w, F, CM>
+where
+    F: Fetch<'w, CM>,
+{
+    type Item = F;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((entity, flags)) = self.entities.next() {
-            if let Some(f) = self.fetch.get(entity) {
+            if let Some(f) = F::get(&self.components, entity) {
                 return Some(f);
             }
         }
@@ -64,139 +156,39 @@ where
     }
 }
 
-pub struct QueryMut<'a, F> {
-    entities: EntityIter<'a>,
+pub struct QueryMut<'w, F> {
+    entities: EntityIter<'w>,
     fetch: F,
 }
-impl<'a, F> Iterator for QueryMut<'a, F>
-where
-    F: FetchMut<'a>,
-{
-    type Item = F::Item;
+// impl<'w, F> Iterator for QueryMut<'w, F>
+// where
+//     F: FetchMut<'w>,
+// {
+//     type Item = F::Item;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        while let Some((entity, flags)) = self.entities.next() {
-            if let Some(f) = unsafe { self.fetch.get_mut(entity) } {
-                return Some(f);
-            }
-        }
-        None
-    }
-}
+//     fn next(&mut self) -> Option<Self::Item> {
+//         while let Some((entity, flags)) = self.entities.next() {
+//             if let Some(f) = unsafe { self.fetch.get_mut(entity) } {
+//                 return Some(f);
+//             }
+//         }
+//         None
+//     }
+// }
 
 /// Iterate over entities together with component flags.
-struct EntityIter<'a> {
-    inner: std::slice::Iter<'a, Entity>,
+struct EntityIter<'w> {
+    inner: Option<std::slice::Iter<'w, Entity>>,
     // TODO
-    flags: &'a [ComponentFlag],
+    flags: &'w [ComponentFlag],
 }
-impl<'a> Iterator for EntityIter<'a> {
-    type Item = (&'a Entity, ComponentFlag);
+impl<'w> Iterator for EntityIter<'w> {
+    type Item = (&'w Entity, ComponentFlag);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let entity = self.inner.next()?;
+        let entity = self.inner.as_mut()?.next()?;
         let flag = self.flags[entity.id as usize];
         Some((entity, flag))
-    }
-}
-
-pub trait IntoFetch<'a, CM> {
-    type Fetch: Fetch;
-    type FetchMut: FetchMut<'a>;
-
-    fn into(storage: &'a Storage<CM>) -> Self::Fetch;
-    fn into_mut(storage: &'a mut Storage<CM>) -> Self::FetchMut;
-    fn query(storage: &'a Storage<CM>) -> Query<'a, Self::Fetch>;
-    fn query_mut(storage: &'a mut Storage<CM>) -> QueryMut<'a, Self::FetchMut>;
-}
-
-// Using &A to avoid conflicitng impl with tuples - to be tested if works.
-impl<'a, A, CM> IntoFetch<'a, CM> for A
-where
-    A: 'static,
-    CM: ComponentHandler<A>,
-{
-    type Fetch = &'a ComponentStorage<A>;
-    type FetchMut = *mut ComponentStorage<A>;
-
-    fn into(storage: &'a Storage<CM>) -> Self::Fetch {
-        <CM as ComponentHandler<A>>::storage(&storage.components)
-    }
-
-    fn into_mut(storage: &'a mut Storage<CM>) -> Self::FetchMut {
-        <CM as ComponentHandler<A>>::storage_raw(&mut storage.components)
-    }
-
-    fn query(storage: &'a Storage<CM>) -> Query<'a, Self::Fetch> {
-        let entities = <CM as ComponentHandler<A>>::storage(&storage.components).entities();
-        Query {
-            entities: EntityIter {
-                inner: entities,
-                flags: &storage.entities.component_flags,
-            },
-            fetch: <Self as IntoFetch<CM>>::into(storage),
-        }
-    }
-    fn query_mut(storage: &'a mut Storage<CM>) -> QueryMut<'a, Self::FetchMut> {
-        let fetch = <Self as IntoFetch<CM>>::into_mut(storage);
-        let entities = <CM as ComponentHandler<A>>::storage(&storage.components).entities();
-        QueryMut {
-            entities: EntityIter {
-                inner: entities,
-                flags: &storage.entities.component_flags,
-            },
-            fetch,
-        }
-    }
-}
-
-impl<'a, A, B, CM> IntoFetch<'a, CM> for (A, B)
-where
-    A: 'static,
-    B: 'static,
-    CM: ComponentHandler<A>,
-    CM: ComponentHandler<B>,
-{
-    type Fetch = (&'a ComponentStorage<A>, &'a ComponentStorage<B>);
-    type FetchMut = (*mut ComponentStorage<A>, *mut ComponentStorage<B>);
-
-    fn into(storage: &'a Storage<CM>) -> Self::Fetch {
-        (
-            <CM as ComponentHandler<A>>::storage(&storage.components),
-            <CM as ComponentHandler<B>>::storage(&storage.components),
-        )
-    }
-    fn into_mut(storage: &'a mut Storage<CM>) -> Self::FetchMut {
-        const {
-            if <CM as ComponentHandler<A>>::MASK & <CM as ComponentHandler<B>>::MASK != 0 {
-                panic!("Duplicated query type");
-            }
-        }
-        (
-            <CM as ComponentHandler<A>>::storage_raw(&mut storage.components),
-            <CM as ComponentHandler<B>>::storage_raw(&mut storage.components),
-        )
-    }
-    fn query(storage: &'a Storage<CM>) -> Query<'a, Self::Fetch> {
-        let entities = <CM as ComponentHandler<A>>::storage(&storage.components).entities();
-        Query {
-            entities: EntityIter {
-                inner: entities,
-                flags: &storage.entities.component_flags,
-            },
-            fetch: <Self as IntoFetch<CM>>::into(storage),
-        }
-    }
-    fn query_mut(storage: &'a mut Storage<CM>) -> QueryMut<'a, Self::FetchMut> {
-        let fetch = <Self as IntoFetch<CM>>::into_mut(storage);
-        let entities = <CM as ComponentHandler<A>>::storage(&storage.components).entities();
-        QueryMut {
-            entities: EntityIter {
-                inner: entities,
-                flags: &storage.entities.component_flags,
-            },
-            fetch,
-        }
     }
 }
 
@@ -220,30 +212,37 @@ impl<CM: Default> Storage<CM> {
     {
         self.components.storage_mut().__insert(entity, value);
     }
-    pub fn get<'a, T>(&'a self, entity: &Entity) -> Option<<T::Fetch as Fetch>::Item>
+    pub fn get<'a, T>(&'a self, entity: &Entity) -> Option<T>
     where
-        T: IntoFetch<'a, CM>,
+        T: Fetch<'a, CM>,
     {
-        T::into(self).get(entity)
+        T::get(&self.components, entity)
     }
-    pub fn get_mut<'a, T>(&'a mut self, entity: &Entity) -> Option<<T::FetchMut as FetchMut>::Item>
+    pub fn get_mut<'a, T>(&'a mut self, entity: &Entity) -> Option<T>
     where
-        T: IntoFetch<'a, CM>,
+        T: FetchMut<'a, CM>,
     {
-        unsafe { T::into_mut(self).get_mut(entity) }
+        unsafe { T::get_mut(&mut self.components, entity) }
     }
-    pub fn query<'a, T>(&'a self) -> Query<'a, T::Fetch>
+    pub fn query<'a, T>(&'a self) -> Query<'a, T, CM>
     where
-        T: IntoFetch<'a, CM>,
+        T: Fetch<'a, CM>,
     {
-        T::query(self)
+        Query {
+            entities: EntityIter {
+                inner: T::entities(&self.components),
+                flags: &self.entities.component_flags,
+            },
+            components: &self.components,
+            _marker: std::marker::PhantomData::default(),
+        }
     }
-    pub fn query_mut<'a, T>(&'a mut self) -> QueryMut<'a, T::FetchMut>
-    where
-        T: IntoFetch<'a, CM>,
-    {
-        T::query_mut(self)
-    }
+    // pub fn query_mut<'a, T>(&'a mut self) -> QueryMut<'a, T::FetchMut>
+    // where
+    //     T: IntoFetch<'a, CM>,
+    // {
+    //     T::query_mut(self)
+    // }
 }
 
 pub trait ComponentHandler<T> {

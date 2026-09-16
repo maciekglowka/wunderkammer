@@ -64,6 +64,7 @@ impl EntityStorage {
             version: 0,
         };
         self.entities.push(entity);
+        self.component_flags.push(0);
         entity
     }
     /// Recycles the previously despawned entity
@@ -81,6 +82,10 @@ impl EntityStorage {
         }
         // restore the id to the valid index
         recycled.id = recycled_id;
+
+        // Clear component flags.
+        self.component_flags[recycled_id as usize] = 0;
+
         Some(*recycled)
     }
 }

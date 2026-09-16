@@ -1,4 +1,4 @@
-use wunderkammer::prelude::storage;
+use wunderkammer::{prelude::storage, storage_next::entity::Entity};
 
 #[storage]
 type Storage = (u32, i32, bool);
@@ -20,10 +20,16 @@ fn main() {
     //     *p += 1;
     //     *v += 3;
     // }
-    // for (p, v) in world.query::<(u32, i32)>() {
-    //     println!("{p} {v}");
-    // }
+    for (p, v) in world.query::<(&u32, &i32)>() {
+        println!("{p} {v}");
+    }
 
-    let _ = world.get::<&u32>(&a);
-    let _ = world.get::<(u32, i32)>(&b);
+    println!("{:?}", world.get::<&u32>(&a));
+    let (u, i) = world.get_mut::<(&mut u32, &i32)>(&b).unwrap();
+    *u += 3;
+    println!("{:?}", world.get::<(&u32, &i32)>(&b));
+    // let _ = world.get::<(&u32, (&i32, &u32))>(&b);
+    for (e, v) in world.query::<(Entity, &i32)>() {
+        println!("{e:?} {v:?}");
+    }
 }
