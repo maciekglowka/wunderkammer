@@ -4,18 +4,19 @@ use super::entity::{Entity, IdSize};
 const TOMBSTONE: IdSize = IdSize::MAX;
 
 pub struct ComponentStorage<T> {
-    dense: Vec<Entity>,
+    pub(crate) dense: Vec<Entity>,
     sparse: Vec<IdSize>,
     values: Vec<T>,
 }
 impl<T> ComponentStorage<T> {
     pub fn get(&self, entity: &Entity) -> Option<&T> {
-        self.values.get(self.get_dense_index(entity)?)
+        self.values
+            .get(get_dense_index(&self.sparse, &self.dense, entity)?)
     }
-    pub fn get_mut(&mut self, entity: &Entity) -> Option<&mut T> {
-        let i = self.get_dense_index(entity)?;
-        self.values.get_mut(i)
-    }
+    // pub fn get_mut(&mut self, entity: &Entity) -> Option<&mut T> {
+    //     let i = self.get_dense_index(entity)?;
+    //     self.values.get_mut(i)
+    // }
     // Return currently stored entities
     pub fn entities(&self) -> std::slice::Iter<Entity> {
         self.dense.iter()
@@ -25,9 +26,9 @@ impl<T> ComponentStorage<T> {
     // Overwrite if already exists.
     // Since it cannot validate the entity,
     // it is recommended to use `insert!` macro that calls it internally.
-    pub fn __insert(&mut self, entity: Entity, value: T) {
+    pub fn insert(&mut self, entity: Entity, value: T) {
         // check if replacement
-        if let Some(index) = self.get_dense_index(&entity) {
+        if let Some(index) = get_dense_index(&self.sparse, &self.dense, &entity) {
             self.values[index] = value;
             return;
         }
@@ -49,7 +50,7 @@ impl<T> ComponentStorage<T> {
     // Removes component for a given entity
     // Keeps the values densely packed
     pub fn remove(&mut self, entity: Entity) -> Option<T> {
-        let removed_idx = self.get_dense_index(&entity)?;
+        let removed_idx = get_dense_index(&self.sparse, &self.dense, &entity)?;
 
         // we are going to swap the removed value with the last one first
         let last_idx = self.dense.len() - 1;
@@ -69,14 +70,18 @@ impl<T> ComponentStorage<T> {
         removed
     }
 
-    fn get_dense_index(&self, entity: &Entity) -> Option<usize> {
-        let i = *self.sparse.get(entity.id as usize)? as usize;
-        // validate version
-        match self.dense.get(i)? == entity {
-            false => None,
-            true => Some(i),
-        }
+    pub(crate) fn parts(&mut self) -> (&Vec<IdSize>, &Vec<Entity>, *mut T) {
+        (&self.sparse, &self.dense, self.values.as_mut_ptr())
     }
+
+    // fn get_dense_index(&self, entity: &Entity) -> Option<usize> {
+    //     let i = *self.sparse.get(entity.id as usize)? as usize;
+    //     // validate version
+    //     match self.dense.get(i)? == entity {
+    //         false => None,
+    //         true => Some(i),
+    //     }
+    // }
 }
 impl<T> Default for ComponentStorage<T> {
     fn default() -> Self {
@@ -85,5 +90,17 @@ impl<T> Default for ComponentStorage<T> {
             sparse: Vec::new(),
             values: Vec::new(),
         }
+    }
+}
+
+pub(crate) fn get_dense_index(
+    sparse: &[IdSize],
+    dense: &[Entity],
+    entity: &Entity,
+) -> Option<usize> {
+    let i = *sparse.get(entity.id as usize)? as usize;
+    match dense.get(i)? == entity {
+        false => None,
+        true => Some(i),
     }
 }
