@@ -3,6 +3,8 @@ use crate::storage_next::entity::{ComponentFlag, EntityStorage};
 use super::components::ComponentStorage;
 use super::entity::Entity;
 
+// TODO Seal traits
+
 trait Fetch<'w, CM>
 where
     Self: Sized,
@@ -51,47 +53,49 @@ where
     }
 }
 
-// trait QueryEntities<'w, CM> {
-//     fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>>;
-// }
-
-// impl<'w, A, CM> QueryEntities<'w, CM> for &'w A
-// where
-//     CM: ComponentHandler<A>,
-// {
-//     fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
-//         Some(components.storage().entities())
-//     }
-// }
-
-// impl<'w, A, B, CM> QueryEntities<'w, CM> for (A, B)
-// where
-//     A: QueryEntities<'w, CM>,
-// {
-//     fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
-//         A::entities(components)
-//     }
-// }
-
 unsafe trait FetchMut<'w, CM>
 where
     Self: Sized,
 {
-    unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self>;
+    const COLLISION_MASK: u128;
+    unsafe fn get_mut(components: &'w CM, entity: &Entity) -> Option<Self>;
+
+    fn entities(_components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+        None
+    }
 }
 unsafe impl<'w, A, CM> FetchMut<'w, CM> for &'w A
 where
     CM: ComponentHandler<A>,
 {
+    const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
+
     unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        const {
+            assert!(
+                <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
+                "component collision mask can't be 0"
+            )
+        };
         components.storage().get(entity)
+    }
+    fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+        Some(components.storage().entities())
     }
 }
 unsafe impl<'w, A, CM> FetchMut<'w, CM> for Option<&'w A>
 where
     CM: ComponentHandler<A>,
 {
+    const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
+
     unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        const {
+            assert!(
+                <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
+                "component collision mask can't be 0"
+            )
+        };
         Some(components.storage().get(entity))
     }
 }
@@ -99,19 +103,40 @@ unsafe impl<'w, A, CM> FetchMut<'w, CM> for &'w mut A
 where
     CM: ComponentHandler<A>,
 {
+    const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
+
     unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        const {
+            assert!(
+                <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
+                "component collision mask can't be 0"
+            )
+        };
         components.storage_mut().get_mut(entity)
+    }
+    fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+        Some(components.storage().entities())
     }
 }
 unsafe impl<'w, A, CM> FetchMut<'w, CM> for Option<&'w mut A>
 where
     CM: ComponentHandler<A>,
 {
+    const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
+
     unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
+        const {
+            assert!(
+                <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
+                "component collision mask can't be 0"
+            )
+        };
         Some(components.storage_mut().get_mut(entity))
     }
 }
 unsafe impl<'w, CM> FetchMut<'w, CM> for Entity {
+    const COLLISION_MASK: u128 = 0;
+
     unsafe fn get_mut(_components: &'w mut CM, entity: &Entity) -> Option<Self> {
         Some(*entity)
     }
@@ -122,13 +147,24 @@ where
     A: FetchMut<'w, CM>,
     B: FetchMut<'w, CM>,
 {
+    const COLLISION_MASK: u128 = A::COLLISION_MASK | B::COLLISION_MASK;
+
     unsafe fn get_mut(components: &'w mut CM, entity: &Entity) -> Option<Self> {
-        // FIXME - component collision check
+        const {
+            assert!(
+                A::COLLISION_MASK & B::COLLISION_MASK == 0,
+                "conflicting query type"
+            );
+        };
+
         let components = &raw mut *components;
         Some((
             A::get_mut(components.as_mut_unchecked(), entity)?,
             B::get_mut(components.as_mut_unchecked(), entity)?,
         ))
+    }
+    fn entities(components: &'w CM) -> Option<std::slice::Iter<'w, Entity>> {
+        A::entities(components).or_else(|| B::entities(components))
     }
 }
 
@@ -156,25 +192,29 @@ where
     }
 }
 
-pub struct QueryMut<'w, F> {
+pub struct QueryMut<'w, F, CM>
+where
+    F: FetchMut<'w, CM>,
+{
     entities: EntityIter<'w>,
-    fetch: F,
+    components: *mut CM,
+    _marker: std::marker::PhantomData<F>,
 }
-// impl<'w, F> Iterator for QueryMut<'w, F>
-// where
-//     F: FetchMut<'w>,
-// {
-//     type Item = F::Item;
+impl<'w, F, CM: 'w> Iterator for QueryMut<'w, F, CM>
+where
+    F: FetchMut<'w, CM>,
+{
+    type Item = F;
 
-//     fn next(&mut self) -> Option<Self::Item> {
-//         while let Some((entity, flags)) = self.entities.next() {
-//             if let Some(f) = unsafe { self.fetch.get_mut(entity) } {
-//                 return Some(f);
-//             }
-//         }
-//         None
-//     }
-// }
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some((entity, flags)) = self.entities.next() {
+            if let Some(f) = unsafe { F::get_mut(self.components.as_mut_unchecked(), entity) } {
+                return Some(f);
+            }
+        }
+        None
+    }
+}
 
 /// Iterate over entities together with component flags.
 struct EntityIter<'w> {
@@ -237,12 +277,20 @@ impl<CM: Default> Storage<CM> {
             _marker: std::marker::PhantomData::default(),
         }
     }
-    // pub fn query_mut<'a, T>(&'a mut self) -> QueryMut<'a, T::FetchMut>
-    // where
-    //     T: IntoFetch<'a, CM>,
-    // {
-    //     T::query_mut(self)
-    // }
+    pub fn query_mut<'a, T>(&'a mut self) -> QueryMut<'a, T, CM>
+    where
+        T: FetchMut<'a, CM>,
+    {
+        let components = &raw mut self.components;
+        QueryMut {
+            entities: EntityIter {
+                inner: T::entities(&self.components),
+                flags: &self.entities.component_flags,
+            },
+            components,
+            _marker: std::marker::PhantomData::default(),
+        }
+    }
 }
 
 pub trait ComponentHandler<T> {
