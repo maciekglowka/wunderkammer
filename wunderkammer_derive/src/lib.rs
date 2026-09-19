@@ -26,7 +26,7 @@ pub fn storage(_attr: TokenStream, input: TokenStream) -> TokenStream {
             pub #name: ComponentStorage<#ty>,
         });
         handler_impls.push(quote! {
-            impl ComponentHandler<#ty> for Components {
+            unsafe impl ComponentHandler<#ty> for Components {
                 const MASK: u128 = #mask;
 
                 fn storage(&self) -> &ComponentStorage<#ty> {
@@ -35,8 +35,8 @@ pub fn storage(_attr: TokenStream, input: TokenStream) -> TokenStream {
                 fn storage_mut(&mut self) -> &mut ComponentStorage<#ty> {
                     &mut self.#name
                 }
-                fn storage_raw(&mut self) -> *mut ComponentStorage<#ty> {
-                    &raw mut self.#name
+                unsafe fn storage_raw(c: *mut Self) -> *mut ComponentStorage<#ty> {
+                    &raw mut (*c).#name
                 }
             }
         });
@@ -86,7 +86,7 @@ pub fn _storage(input: TokenStream) -> TokenStream {
                 fn storage_mut(&mut self) -> &mut ComponentStorage<#ty> {
                     &mut self.#name
                 }
-                fn storage_raw(&mut self) -> *mut ComponentStorage<#ty> {
+                fn storage_raw(c: *mut self) -> *mut ComponentStorage<#ty> {
                     &raw mut self.#name
                 }
             }
