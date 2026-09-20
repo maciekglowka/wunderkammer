@@ -28,6 +28,8 @@ pub mod prelude {
     // pub use wunderkammer_derive::ComponentSet;
 
     // TEMP
-    pub use storage_next::storage::{ComponentHandler, Query, QueryMut, Storage};
+    pub use storage_next::query::Query;
+    pub use storage_next::query_mut::QueryMut;
+    pub use storage_next::storage::{ComponentHandler, Storage};
     pub use wunderkammer_derive::storage;
 }
