@@ -125,24 +125,69 @@ impl<'w, CM> Fetch<'w, CM> for Entity {
     }
 }
 
-impl<'w, A, B, CM> Fetch<'w, CM> for (A, B)
-where
-    A: Fetch<'w, CM>,
-    B: Fetch<'w, CM>,
-{
-    type View = (A::View, B::View);
+// impl<'w, A, B, CM> Fetch<'w, CM> for (A, B)
+// where
+//     A: Fetch<'w, CM>,
+//     B: Fetch<'w, CM>,
+// {
+//     type View = (A::View, B::View);
 
-    fn prepare(
-        components: &'w CM,
-        entity_storage: &'w EntityStorage,
-    ) -> (Self::View, Option<EntityIter<'w>>) {
-        let (ca, ea) = A::prepare(components, entity_storage);
-        let (cb, eb) = B::prepare(components, entity_storage);
-        let entities = ea.or_else(|| eb);
-        ((ca, cb), entities)
-    }
-    fn get(view: &Self::View, entity: &Entity) -> Option<Self> {
-        let (va, vb) = view;
-        Some((A::get(va, entity)?, B::get(vb, entity)?))
-    }
+//     fn prepare(
+//         components: &'w CM,
+//         entity_storage: &'w EntityStorage,
+//     ) -> (Self::View, Option<EntityIter<'w>>) {
+//         let (ca, ea) = A::prepare(components, entity_storage);
+//         let (cb, eb) = B::prepare(components, entity_storage);
+//         let entities = ea.or(eb);
+//         ((ca, cb), entities)
+//     }
+//     fn get(view: &Self::View, entity: &Entity) -> Option<Self> {
+//         let (va, vb) = view;
+//         Some((A::get(va, entity)?, B::get(vb, entity)?))
+//     }
+// }
+
+macro_rules! impl_single_tuple {
+    ($($T:ident),+) => {
+        impl<'w, $($T),+, CM> Fetch<'w, CM> for ($($T),+)
+        where
+            $($T: Fetch<'w, CM>),+
+        {
+            type View = ($($T::View),+);
+
+            fn prepare(
+                components: &'w CM,
+                entity_storage: &'w EntityStorage
+            ) -> (Self::View, Option<EntityIter<'w>>) {
+                let mut entities = None;
+
+                let views = (
+                    $({
+                        let (view, iter) = $T::prepare(components, entity_storage);
+                        entities = entities.or(iter);
+                        view
+                    },)+
+                );
+                (views, entities)
+            }
+            #[allow(non_snake_case)]
+            fn get(view: &Self::View, entity: &Entity) -> Option<Self> {
+                let ($($T,)+) = view;
+                Some(($($T::get($T, entity)?,)+))
+            }
+        }
+
+    };
 }
+
+macro_rules! impl_tuples {
+    ($a:ident, $b:ident) => {
+        impl_single_tuple!($a, $b);
+    };
+    ($a:ident, $($rest:ident),+) => {
+        impl_single_tuple!($a, $($rest), +);
+        impl_tuples!($($rest),+);
+    };
+}
+
+impl_tuples!(A, B, C, D, E, F, G, H, I, J, K, L);

@@ -15,7 +15,7 @@ pub struct Entity {
 
 #[derive(Default)]
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
-pub(crate) struct EntityStorage {
+pub struct EntityStorage {
     entities: Vec<Entity>,
     pub(crate) component_flags: Vec<ComponentFlag>,
     last_recycled: Option<IdSize>,

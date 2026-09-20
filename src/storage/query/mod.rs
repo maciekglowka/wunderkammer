@@ -11,7 +11,7 @@ use super::entity::ComponentFlag;
 use super::Entity;
 
 /// Iterate over entities together with component flags.
-pub(crate) struct EntityIter<'w> {
+pub struct EntityIter<'w> {
     pub(crate) inner: std::slice::Iter<'w, Entity>,
     // TODO
     pub(crate) flags: &'w [ComponentFlag],

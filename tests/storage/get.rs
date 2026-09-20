@@ -57,7 +57,36 @@ fn get_many() {
 
     assert_eq!((&4, &-2), world.get::<(&u32, &i32)>(&entities[2]).unwrap());
     assert_eq!(
-        (&10, &-5, &5),
+        (&8, &-4, &4),
         world.get::<(&u32, &i32, &u8)>(&entities[4]).unwrap()
+    );
+}
+
+#[test]
+fn get_many_mut() {
+    let mut world = World::default();
+
+    let entities = (0..5)
+        .map(|i| {
+            let e = world.spawn();
+            world.insert::<u32>(e, 2 * i);
+            world.insert::<u8>(e, i as u8);
+            world.insert::<i32>(e, -(i as i32));
+            world.insert(e, format!("{i}"));
+            e
+        })
+        .collect::<Vec<_>>();
+
+    let (a, b, c) = world
+        .get_mut::<(&mut u32, &mut i32, &u8)>(&entities[2])
+        .unwrap();
+
+    assert_eq!(&2, c);
+    *a *= 5;
+    *b *= 7;
+
+    assert_eq!(
+        (&20, &-14),
+        world.get::<(&u32, &i32)>(&entities[2]).unwrap()
     );
 }

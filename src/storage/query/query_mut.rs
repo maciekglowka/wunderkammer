@@ -80,7 +80,7 @@ where
     unsafe fn prepare(
         components: *mut CM,
         entity_storage: &'w EntityStorage,
-    ) -> (Self::View, Option<EntityIter>) {
+    ) -> (Self::View, Option<EntityIter<'w>>) {
         const {
             assert!(
                 <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
@@ -119,7 +119,7 @@ where
     unsafe fn prepare(
         components: *mut CM,
         _entity_storage: &'w EntityStorage,
-    ) -> (Self::View, Option<EntityIter>) {
+    ) -> (Self::View, Option<EntityIter<'w>>) {
         const {
             assert!(
                 <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
@@ -154,7 +154,7 @@ where
     unsafe fn prepare(
         components: *mut CM,
         entity_storage: &'w EntityStorage,
-    ) -> (Self::View, Option<EntityIter>) {
+    ) -> (Self::View, Option<EntityIter<'w>>) {
         const {
             assert!(
                 <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
@@ -193,7 +193,7 @@ where
     unsafe fn prepare(
         components: *mut CM,
         _entity_storage: &'w EntityStorage,
-    ) -> (Self::View, Option<EntityIter>) {
+    ) -> (Self::View, Option<EntityIter<'w>>) {
         const {
             assert!(
                 <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
@@ -224,7 +224,7 @@ unsafe impl<'w, CM> FetchMut<'w, CM> for Entity {
     unsafe fn prepare(
         _components: *mut CM,
         _entity_storage: &'w EntityStorage,
-    ) -> (Self::View, Option<EntityIter>) {
+    ) -> (Self::View, Option<EntityIter<'w>>) {
         ((), None)
     }
 
@@ -233,32 +233,83 @@ unsafe impl<'w, CM> FetchMut<'w, CM> for Entity {
     }
 }
 
-unsafe impl<'w, A, B, CM> FetchMut<'w, CM> for (A, B)
-where
-    A: FetchMut<'w, CM>,
-    B: FetchMut<'w, CM>,
-{
-    type View = (A::View, B::View);
-    const COLLISION_MASK: u128 = A::COLLISION_MASK | B::COLLISION_MASK;
+// unsafe impl<'w, A, B, CM> FetchMut<'w, CM> for (A, B)
+// where
+//     A: FetchMut<'w, CM>,
+//     B: FetchMut<'w, CM>,
+// {
+//     type View = (A::View, B::View);
+//     const COLLISION_MASK: u128 = A::COLLISION_MASK | B::COLLISION_MASK;
 
-    unsafe fn prepare(
-        components: *mut CM,
-        entity_storage: &'w EntityStorage,
-    ) -> (Self::View, Option<EntityIter>) {
-        const {
-            assert!(
-                A::COLLISION_MASK & B::COLLISION_MASK == 0,
-                "conflicting query type"
-            );
-        };
-        let (ca, ea) = A::prepare(components, entity_storage);
-        let (cb, eb) = B::prepare(components, entity_storage);
-        let entities = ea.or_else(|| eb);
-        ((ca, cb), entities)
-    }
+//     unsafe fn prepare(
+//         components: *mut CM,
+//         entity_storage: &'w EntityStorage,
+//     ) -> (Self::View, Option<EntityIter>) {
+//         const {
+//             assert!(
+//                 A::COLLISION_MASK & B::COLLISION_MASK == 0,
+//                 "conflicting query type"
+//             );
+//         };
+//         let (ca, ea) = A::prepare(components, entity_storage);
+//         let (cb, eb) = B::prepare(components, entity_storage);
+//         let entities = ea.or_else(|| eb);
+//         ((ca, cb), entities)
+//     }
 
-    unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self> {
-        let (va, vb) = view;
-        Some((A::get_mut(va, entity)?, B::get_mut(vb, entity)?))
-    }
+//     unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self>
+// {         let (va, vb) = view;
+//         Some((A::get_mut(va, entity)?, B::get_mut(vb, entity)?))
+//     }
+// }
+
+macro_rules! impl_single_tuple {
+    ($($T:ident),+) => {
+        unsafe impl<'w, $($T),+, CM> FetchMut<'w, CM> for ($($T),+)
+        where
+            $($T: FetchMut<'w, CM>),+
+        {
+            type View = ($($T::View),+);
+            const COLLISION_MASK: u128 = ($($T::COLLISION_MASK)|+);
+
+            unsafe fn prepare(
+                components: *mut CM,
+                entity_storage: &'w EntityStorage
+            ) -> (Self::View, Option<EntityIter<'w>>) {
+                const {
+                    assert!(
+                      ($($T::COLLISION_MASK)&+) == 0
+                    );
+                };
+                let mut entities = None;
+
+                let views = (
+                    $({
+                        let (view, iter) = $T::prepare(components, entity_storage);
+                        entities = entities.or(iter);
+                        view
+                    },)+
+                );
+                (views, entities)
+            }
+            #[allow(non_snake_case)]
+            unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self> {
+                let ($($T,)+) = view;
+                Some(($($T::get_mut($T, entity)?,)+))
+            }
+        }
+
+    };
 }
+
+macro_rules! impl_tuples {
+    ($a:ident, $b:ident) => {
+        impl_single_tuple!($a, $b);
+    };
+    ($a:ident, $($rest:ident),+) => {
+        impl_single_tuple!($a, $($rest), +);
+        impl_tuples!($($rest),+);
+    };
+}
+
+impl_tuples!(A, B, C, D, E, F, G, H, I, J, K, L);
