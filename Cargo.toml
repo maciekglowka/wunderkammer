@@ -16,7 +16,7 @@ default = ["events", "storage", "send"]
 events = []
 log = ["dep:log"]
 send = []
-serialize = ["dep:serde"]
+serialize = ["dep:serde", "wunderkammer_derive?/serialize"]
 storage = ["dep:wunderkammer_derive"]
 
 [dependencies]

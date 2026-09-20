@@ -3,12 +3,14 @@
 #[cfg(feature = "events")]
 pub mod events;
 
-// #[cfg(feature = "storage")]
-// mod storage;
+#[cfg(feature = "storage")]
+pub mod storage;
 
-pub mod storage_next;
-pub use storage_next::components::ComponentStorage;
-pub use storage_next::storage::{ComponentHandler, Storage};
+#[cfg(feature = "storage")]
+pub use wunderkammer_derive::storage;
+
+#[cfg(feature = "storage")]
+pub use storage::Entity;
 
 pub mod prelude {
     use super::*;
@@ -16,20 +18,6 @@ pub mod prelude {
     #[cfg(feature = "events")]
     pub use events::{BusHandle, EventDispatcher, EventSender, HandlerResult};
 
-    // #[cfg(feature = "storage")]
-    // pub use super::{insert, query, query_execute, query_iter};
-    // #[cfg(feature = "storage")]
-    // pub use storage::{
-    //     components::{ComponentSet, ComponentStorage},
-    //     entity::{Entity, EntityStorage},
-    //     world::WorldStorage,
-    // };
-    // #[cfg(feature = "storage")]
-    // pub use wunderkammer_derive::ComponentSet;
-
-    // TEMP
-    pub use storage_next::query::Query;
-    pub use storage_next::query_mut::QueryMut;
-    pub use storage_next::storage::{ComponentHandler, Storage};
+    #[cfg(feature = "storage")]
     pub use wunderkammer_derive::storage;
 }

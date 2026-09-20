@@ -13,6 +13,12 @@ categories = ["game-development", "data-structures"]
 [lib]
 proc-macro = true
 
+[features]
+serialize = ["dep:serde"]
+
 [dependencies]
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
+
+# TODO move to workspace dep
+serde = { version = "1.0", features = ["derive"], optional = true }

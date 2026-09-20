@@ -1,6 +1,8 @@
-use super::components::get_dense_index;
-use super::entity::{Entity, EntityStorage, IdSize};
-use super::storage::{ComponentHandler, EntityIter};
+use crate::storage::components::get_dense_index;
+use crate::storage::entity::{Entity, EntityStorage, IdSize};
+use crate::storage::ComponentHandler;
+
+use super::EntityIter;
 
 pub struct QueryMut<'w, F, CM>
 where
@@ -8,8 +10,6 @@ where
 {
     state: F::View,
     entities: Option<EntityIter<'w>>,
-    // TODO validate marker
-    // _marker: std::marker::PhantomData<fn() -> (F, &'w CM)>,
     _marker: std::marker::PhantomData<(F, &'w CM)>,
 }
 impl<'w, F, CM> QueryMut<'w, F, CM>
@@ -40,7 +40,7 @@ where
     }
 }
 
-pub(crate) struct ViewMut<'w, A> {
+pub struct ViewMut<'w, A> {
     /// Used for iteration over component storage entities.
     sparse: &'w [IdSize],
     dense: &'w [Entity],
@@ -57,7 +57,7 @@ impl<'w, A> ViewMut<'w, A> {
     }
 }
 
-pub(crate) unsafe trait FetchMut<'w, CM>
+pub unsafe trait FetchMut<'w, CM>
 where
     Self: Sized,
 {

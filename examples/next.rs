@@ -1,10 +1,10 @@
-use wunderkammer::{prelude::storage, storage_next::entity::Entity};
+use wunderkammer::Entity;
 
-#[storage]
-type Storage = (u32, i32, bool);
+#[wunderkammer::storage]
+type World = (u32, i32, bool);
 
 fn main() {
-    let mut world = Storage::new();
+    let mut world = World::new();
 
     let a = world.spawn();
     let b = world.spawn();

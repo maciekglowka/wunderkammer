@@ -1,7 +1,8 @@
-use crate::ComponentStorage;
+use crate::storage::components::ComponentStorage;
+use crate::storage::entity::{Entity, EntityStorage};
+use crate::storage::ComponentHandler;
 
-use super::entity::{Entity, EntityStorage};
-use super::storage::{ComponentHandler, EntityIter};
+use super::EntityIter;
 
 pub struct Query<'w, F, CM>
 where
@@ -9,8 +10,8 @@ where
 {
     state: F::View,
     entities: Option<EntityIter<'w>>,
-    // pub(crate) components: &'w CM,
-    _marker: std::marker::PhantomData<F>,
+    filter: u128,
+    _marker: std::marker::PhantomData<(F, &'w CM)>,
 }
 impl<'w, F, CM> Query<'w, F, CM>
 where
@@ -20,8 +21,16 @@ where
         Self {
             state,
             entities,
+            filter: 0,
             _marker: std::marker::PhantomData,
         }
+    }
+    pub fn without<W>(mut self) -> Self
+    where
+        CM: ComponentHandler<W>,
+    {
+        self.filter |= CM::MASK;
+        self
     }
 }
 impl<'w, F, CM> Iterator for Query<'w, F, CM>
@@ -40,7 +49,7 @@ where
     }
 }
 
-pub(crate) struct View<'w, A> {
+pub struct View<'w, A> {
     inner: &'w ComponentStorage<A>,
 }
 impl<'w, A> View<'w, A> {
@@ -49,7 +58,7 @@ impl<'w, A> View<'w, A> {
     }
 }
 
-pub(crate) trait Fetch<'w, CM>
+pub trait Fetch<'w, CM>
 where
     Self: Sized,
 {
