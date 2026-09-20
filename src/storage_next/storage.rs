@@ -61,19 +61,11 @@ where
     type View;
     const COLLISION_MASK: u128;
 
-    unsafe fn prepare(components: *mut CM) -> Self::View;
+    unsafe fn prepare(
+        components: *mut CM,
+        entity_storage: &'w EntityStorage,
+    ) -> (Self::View, Option<EntityIter<'w>>);
     unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self>;
-
-    /// Nested option means:
-    /// - outer == None -> this type does not yield entities
-    /// - inner behaves as typical iterator (when outer is Some)
-    fn next_entity(_view: &mut Self::View) -> Option<Option<Entity>> {
-        None
-    }
-
-    // fn entities(_components: &'w CM) -> Option<std::slice::Iter<'w, Entity>>
-    // {     None
-    // }
 }
 unsafe impl<'w, A, CM> FetchMut<'w, CM> for &'w A
 where
@@ -82,7 +74,10 @@ where
     type View = ViewMut<'w, A>;
     const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
 
-    unsafe fn prepare(components: *mut CM) -> Self::View {
+    unsafe fn prepare(
+        components: *mut CM,
+        entity_storage: &'w EntityStorage,
+    ) -> (Self::View, Option<EntityIter>) {
         const {
             assert!(
                 <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
@@ -92,24 +87,30 @@ where
 
         let storage = &mut *ComponentHandler::<A>::storage_raw(components);
         let (sparse, dense, values) = storage.parts();
-        ViewMut {
-            entity_idx: 0,
-            sparse,
-            dense,
-            values,
-            _marker: std::marker::PhantomData,
-        }
+        let entities = EntityIter {
+            inner: dense.iter(),
+            flags: &entity_storage.component_flags,
+        };
+        (
+            ViewMut {
+                sparse,
+                dense,
+                values,
+                _marker: std::marker::PhantomData,
+            },
+            Some(entities),
+        )
     }
 
     unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self> {
         view.get_mut(entity).map(|a| &*a)
     }
 
-    fn next_entity(view: &mut Self::View) -> Option<Option<Entity>> {
-        let entity = view.dense.get(view.entity_idx).copied();
-        view.entity_idx += 1;
-        Some(entity)
-    }
+    // fn next_entity(view: &mut Self::View) -> Option<Option<Entity>> {
+    //     let entity = view.dense.get(view.entity_idx).copied();
+    //     view.entity_idx += 1;
+    //     Some(entity)
+    // }
 }
 unsafe impl<'w, A, CM> FetchMut<'w, CM> for Option<&'w A>
 where
@@ -118,7 +119,10 @@ where
     type View = ViewMut<'w, A>;
     const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
 
-    unsafe fn prepare(components: *mut CM) -> Self::View {
+    unsafe fn prepare(
+        components: *mut CM,
+        _entity_storage: &'w EntityStorage,
+    ) -> (Self::View, Option<EntityIter>) {
         const {
             assert!(
                 <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
@@ -128,13 +132,15 @@ where
 
         let storage = &mut *ComponentHandler::<A>::storage_raw(components);
         let (sparse, dense, values) = storage.parts();
-        ViewMut {
-            entity_idx: 0,
-            sparse,
-            dense,
-            values,
-            _marker: std::marker::PhantomData,
-        }
+        (
+            ViewMut {
+                sparse,
+                dense,
+                values,
+                _marker: std::marker::PhantomData,
+            },
+            None,
+        )
     }
 
     unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self> {
@@ -148,7 +154,10 @@ where
     type View = ViewMut<'w, A>;
     const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
 
-    unsafe fn prepare(components: *mut CM) -> Self::View {
+    unsafe fn prepare(
+        components: *mut CM,
+        entity_storage: &'w EntityStorage,
+    ) -> (Self::View, Option<EntityIter>) {
         const {
             assert!(
                 <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
@@ -158,23 +167,23 @@ where
 
         let storage = &mut *ComponentHandler::<A>::storage_raw(components);
         let (sparse, dense, values) = storage.parts();
-        ViewMut {
-            entity_idx: 0,
-            sparse,
-            dense,
-            values,
-            _marker: std::marker::PhantomData,
-        }
+        let entities = EntityIter {
+            inner: dense.iter(),
+            flags: &entity_storage.component_flags,
+        };
+        (
+            ViewMut {
+                sparse,
+                dense,
+                values,
+                _marker: std::marker::PhantomData,
+            },
+            Some(entities),
+        )
     }
 
     unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self> {
         view.get_mut(entity)
-    }
-
-    fn next_entity(view: &mut Self::View) -> Option<Option<Entity>> {
-        let entity = view.dense.get(view.entity_idx).copied();
-        view.entity_idx += 1;
-        Some(entity)
     }
 }
 unsafe impl<'w, A, CM> FetchMut<'w, CM> for Option<&'w mut A>
@@ -184,7 +193,10 @@ where
     type View = ViewMut<'w, A>;
     const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
 
-    unsafe fn prepare(components: *mut CM) -> Self::View {
+    unsafe fn prepare(
+        components: *mut CM,
+        _entity_storage: &'w EntityStorage,
+    ) -> (Self::View, Option<EntityIter>) {
         const {
             assert!(
                 <Self as FetchMut<'w, CM>>::COLLISION_MASK != 0,
@@ -194,13 +206,15 @@ where
 
         let storage = &mut *ComponentHandler::<A>::storage_raw(components);
         let (sparse, dense, values) = storage.parts();
-        ViewMut {
-            entity_idx: 0,
-            sparse,
-            dense,
-            values,
-            _marker: std::marker::PhantomData,
-        }
+        (
+            ViewMut {
+                sparse,
+                dense,
+                values,
+                _marker: std::marker::PhantomData,
+            },
+            None,
+        )
     }
     unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self> {
         Some(view.get_mut(entity))
@@ -210,7 +224,12 @@ unsafe impl<'w, CM> FetchMut<'w, CM> for Entity {
     type View = ();
     const COLLISION_MASK: u128 = 0;
 
-    unsafe fn prepare(_components: *mut CM) -> Self::View {}
+    unsafe fn prepare(
+        _components: *mut CM,
+        _entity_storage: &'w EntityStorage,
+    ) -> (Self::View, Option<EntityIter>) {
+        ((), None)
+    }
 
     unsafe fn get_mut(_view: &mut Self::View, entity: &Entity) -> Option<Self> {
         Some(*entity)
@@ -225,25 +244,25 @@ where
     type View = (A::View, B::View);
     const COLLISION_MASK: u128 = A::COLLISION_MASK | B::COLLISION_MASK;
 
-    unsafe fn prepare(components: *mut CM) -> Self::View {
+    unsafe fn prepare(
+        components: *mut CM,
+        entity_storage: &'w EntityStorage,
+    ) -> (Self::View, Option<EntityIter>) {
         const {
             assert!(
                 A::COLLISION_MASK & B::COLLISION_MASK == 0,
                 "conflicting query type"
             );
         };
-        (A::prepare(components), B::prepare(components))
+        let (ca, ea) = A::prepare(components, entity_storage);
+        let (cb, eb) = B::prepare(components, entity_storage);
+        let entities = ea.or_else(|| eb);
+        ((ca, cb), entities)
     }
 
     unsafe fn get_mut(view: &mut Self::View, entity: &Entity) -> Option<Self> {
         let (va, vb) = view;
         Some((A::get_mut(va, entity)?, B::get_mut(vb, entity)?))
-    }
-    fn next_entity(view: &mut Self::View) -> Option<Option<Entity>> {
-        // TODO test heavily if exhausting first storage won't lead to iterating
-        // over next.
-        let (va, vb) = view;
-        A::next_entity(va).or_else(|| B::next_entity(vb))
     }
 }
 
@@ -253,9 +272,8 @@ where
 
 struct ViewMut<'w, A> {
     /// Used for iteration over component storage entities.
-    entity_idx: usize,
-    sparse: &'w Vec<IdSize>,
-    dense: &'w Vec<Entity>,
+    sparse: &'w [IdSize],
+    dense: &'w [Entity],
     values: *mut A,
     _marker: std::marker::PhantomData<&'w mut [A]>,
 }
@@ -263,7 +281,7 @@ impl<'w, A> ViewMut<'w, A> {
     /// Up to the caller to guarantee that
     /// same entity is not passed twice.
     /// Should be only used in query iterator.
-    unsafe fn get_mut(&self, entity: &Entity) -> Option<&'w mut A> {
+    unsafe fn get_mut(&mut self, entity: &Entity) -> Option<&'w mut A> {
         let idx = get_dense_index(&self.sparse, &self.dense, entity)?;
         Some(&mut *self.values.add(idx))
     }
@@ -273,7 +291,7 @@ pub struct Query<'w, F, CM>
 where
     F: Fetch<'w, CM>,
 {
-    entities: EntityIter<'w>,
+    entities: Option<EntityIter<'w>>,
     components: &'w CM,
     _marker: std::marker::PhantomData<F>,
 }
@@ -284,7 +302,7 @@ where
     type Item = F;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some((entity, flags)) = self.entities.next() {
+        while let Some((entity, flags)) = self.entities.as_mut()?.next() {
             if let Some(f) = F::get(&self.components, entity) {
                 return Some(f);
             }
@@ -298,8 +316,9 @@ where
     F: FetchMut<'w, CM>,
 {
     state: F::View,
-    flags: &'w [ComponentFlag],
-    _marker: std::marker::PhantomData<fn() -> CM>,
+    entities: Option<EntityIter<'w>>,
+    // TODO validate marker
+    _marker: std::marker::PhantomData<fn() -> (F, &'w CM)>,
 }
 impl<'w, F, CM: 'w> Iterator for QueryMut<'w, F, CM>
 where
@@ -308,9 +327,8 @@ where
     type Item = F;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(entity) = F::next_entity(&mut self.state)? {
-            let flag = self.flags[entity.id as usize];
-            if let Some(f) = unsafe { F::get_mut(&mut self.state, &entity) } {
+        while let Some((entity, flags)) = self.entities.as_mut()?.next() {
+            if let Some(f) = unsafe { F::get_mut(&mut self.state, entity) } {
                 return Some(f);
             }
         }
@@ -320,7 +338,7 @@ where
 
 /// Iterate over entities together with component flags.
 struct EntityIter<'w> {
-    inner: Option<std::slice::Iter<'w, Entity>>,
+    inner: std::slice::Iter<'w, Entity>,
     // TODO
     flags: &'w [ComponentFlag],
 }
@@ -328,7 +346,9 @@ impl<'w> Iterator for EntityIter<'w> {
     type Item = (&'w Entity, ComponentFlag);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let entity = self.inner.as_mut()?.next()?;
+        // FIXME for shared queries.
+        let entity = self.inner.next()?;
+        // let entity = self.inner.as_mut()?.next()?;
         let flag = self.flags[entity.id as usize];
         Some((entity, flag))
     }
@@ -364,18 +384,19 @@ impl<CM: Default> Storage<CM> {
     where
         T: FetchMut<'a, CM>,
     {
-        let mut state = unsafe { T::prepare(&raw mut self.components) };
+        let (mut state, _) = unsafe { T::prepare(&raw mut self.components, &self.entities) };
         unsafe { T::get_mut(&mut state, entity) }
     }
     pub fn query<'a, T>(&'a self) -> Query<'a, T, CM>
     where
         T: Fetch<'a, CM>,
     {
+        let entities = T::entities(&self.components).map(|c| EntityIter {
+            inner: c,
+            flags: &self.entities.component_flags,
+        });
         Query {
-            entities: EntityIter {
-                inner: T::entities(&self.components),
-                flags: &self.entities.component_flags,
-            },
+            entities,
             components: &self.components,
             _marker: std::marker::PhantomData::default(),
         }
@@ -385,9 +406,10 @@ impl<CM: Default> Storage<CM> {
         T: FetchMut<'a, CM>,
     {
         let components = &raw mut self.components;
+        let (state, entities) = unsafe { T::prepare(components, &self.entities) };
         QueryMut {
-            state: unsafe { T::prepare(components) },
-            flags: &self.entities.component_flags,
+            entities,
+            state,
             _marker: std::marker::PhantomData::default(),
         }
     }

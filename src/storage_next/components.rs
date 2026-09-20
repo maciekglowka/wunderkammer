@@ -70,7 +70,7 @@ impl<T> ComponentStorage<T> {
         removed
     }
 
-    pub(crate) fn parts(&mut self) -> (&Vec<IdSize>, &Vec<Entity>, *mut T) {
+    pub(crate) fn parts(&mut self) -> (&[IdSize], &[Entity], *mut T) {
         (&self.sparse, &self.dense, self.values.as_mut_ptr())
     }
 

@@ -16,7 +16,7 @@ fn main() {
     world.insert(a, 1_i32);
     world.insert(b, 2_i32);
 
-    for (p, v) in world.query_mut::<(&mut u32, &mut u32)>() {
+    for (p, v) in world.query_mut::<(&mut u32, &mut i32)>() {
         *p += 1;
         *v += 3;
     }
