@@ -10,6 +10,7 @@ where
 {
     state: F::View,
     entities: Option<EntityIter<'w>>,
+    exclude_filter: u128,
     _marker: std::marker::PhantomData<(F, &'w CM)>,
 }
 impl<'w, F, CM> QueryMut<'w, F, CM>
@@ -20,8 +21,16 @@ where
         Self {
             state,
             entities,
+            exclude_filter: 0,
             _marker: std::marker::PhantomData,
         }
+    }
+    pub fn without<W>(mut self) -> Self
+    where
+        CM: ComponentHandler<W>,
+    {
+        self.exclude_filter |= CM::MASK;
+        self
     }
 }
 impl<'w, F, CM: 'w> Iterator for QueryMut<'w, F, CM>
@@ -32,9 +41,13 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((entity, flags)) = self.entities.as_mut()?.next() {
-            if let Some(f) = unsafe { F::get_mut(&mut self.state, entity) } {
-                return Some(f);
+            if flags & F::INCLUDE_FILTER != F::INCLUDE_FILTER {
+                continue;
             }
+            if flags & self.exclude_filter != 0 {
+                continue;
+            }
+            return Some(unsafe { F::get_mut(&mut self.state, entity).unwrap() });
         }
         None
     }
@@ -63,6 +76,8 @@ where
 {
     type View;
     const COLLISION_MASK: u128;
+    /// Should be always 0 for types that do not yield entities.
+    const INCLUDE_FILTER: u128;
 
     unsafe fn prepare(
         components: *mut CM,
@@ -76,6 +91,7 @@ where
 {
     type View = ViewMut<'w, A>;
     const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
+    const INCLUDE_FILTER: u128 = <CM as ComponentHandler<A>>::MASK;
 
     unsafe fn prepare(
         components: *mut CM,
@@ -115,6 +131,7 @@ where
 {
     type View = ViewMut<'w, A>;
     const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
+    const INCLUDE_FILTER: u128 = 0;
 
     unsafe fn prepare(
         components: *mut CM,
@@ -150,6 +167,7 @@ where
 {
     type View = ViewMut<'w, A>;
     const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
+    const INCLUDE_FILTER: u128 = <CM as ComponentHandler<A>>::MASK;
 
     unsafe fn prepare(
         components: *mut CM,
@@ -189,6 +207,7 @@ where
 {
     type View = ViewMut<'w, A>;
     const COLLISION_MASK: u128 = <CM as ComponentHandler<A>>::MASK;
+    const INCLUDE_FILTER: u128 = 0;
 
     unsafe fn prepare(
         components: *mut CM,
@@ -220,6 +239,7 @@ where
 unsafe impl<'w, CM> FetchMut<'w, CM> for Entity {
     type View = ();
     const COLLISION_MASK: u128 = 0;
+    const INCLUDE_FILTER: u128 = 0;
 
     unsafe fn prepare(
         _components: *mut CM,
@@ -271,6 +291,7 @@ macro_rules! impl_single_tuple {
         {
             type View = ($($T::View),+);
             const COLLISION_MASK: u128 = ($($T::COLLISION_MASK)|+);
+            const INCLUDE_FILTER: u128 = ($($T::INCLUDE_FILTER)|+);
 
             unsafe fn prepare(
                 components: *mut CM,

@@ -1,5 +1,3 @@
-use wunderkammer::Entity;
-
 #[wunderkammer::storage]
 type World = (String, u32, i32, u8);
 
@@ -88,5 +86,36 @@ fn get_many_mut() {
     assert_eq!(
         (&20, &-14),
         world.get::<(&u32, &i32)>(&entities[2]).unwrap()
+    );
+}
+
+#[test]
+fn get_option() {
+    let mut world = World::default();
+
+    let entities = (0..5)
+        .map(|i| {
+            let e = world.spawn();
+            world.insert::<u32>(e, 2 * i);
+            world.insert::<u8>(e, i as u8);
+
+            if i > 2 {
+                world.insert::<i32>(e, -(i as i32));
+            }
+            e
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        (&2, &1, None),
+        world
+            .get::<(&u32, &u8, Option<&i32>)>(&entities[1])
+            .unwrap()
+    );
+    assert_eq!(
+        (&6, &3, Some(&mut -3)),
+        world
+            .get_mut::<(&u32, &u8, Option<&mut i32>)>(&entities[3])
+            .unwrap()
     );
 }

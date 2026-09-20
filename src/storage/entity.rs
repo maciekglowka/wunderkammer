@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 // TODO rewrite once settles.
 
 pub type IdSize = u16;
-pub type ComponentFlag = u16;
+pub type ComponentFlag = u128;
 
 #[cfg_attr(feature = "serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq, PartialOrd, Ord)]
@@ -45,6 +45,12 @@ impl EntityStorage {
         }
         // now this one is the prev_recycled
         self.last_recycled = Some(entity.id);
+    }
+    pub(crate) fn set_component_flag(&mut self, entity: &Entity, flag: u128) {
+        self.component_flags[entity.id as usize] |= flag;
+    }
+    pub(crate) fn clear_component_flag(&mut self, entity: &Entity, flag: u128) {
+        self.component_flags[entity.id as usize] &= !flag;
     }
     /// Validates the given entity
     pub(crate) fn is_valid(&self, entity: &Entity) -> bool {

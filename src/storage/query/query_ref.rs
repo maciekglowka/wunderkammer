@@ -10,7 +10,7 @@ where
 {
     state: F::View,
     entities: Option<EntityIter<'w>>,
-    filter: u128,
+    exclude_filter: u128,
     _marker: std::marker::PhantomData<(F, &'w CM)>,
 }
 impl<'w, F, CM> Query<'w, F, CM>
@@ -21,7 +21,7 @@ where
         Self {
             state,
             entities,
-            filter: 0,
+            exclude_filter: 0,
             _marker: std::marker::PhantomData,
         }
     }
@@ -29,7 +29,7 @@ where
     where
         CM: ComponentHandler<W>,
     {
-        self.filter |= CM::MASK;
+        self.exclude_filter |= CM::MASK;
         self
     }
 }
@@ -41,9 +41,13 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some((entity, flags)) = self.entities.as_mut()?.next() {
-            if let Some(f) = F::get(&self.state, entity) {
-                return Some(f);
+            if flags & F::INCLUDE_FILTER != F::INCLUDE_FILTER {
+                continue;
             }
+            if flags & self.exclude_filter != 0 {
+                continue;
+            }
+            return Some(F::get(&self.state, entity).unwrap());
         }
         None
     }
@@ -63,6 +67,8 @@ where
     Self: Sized,
 {
     type View;
+    /// Should be always 0 for types that do not yield entities.
+    const INCLUDE_FILTER: u128;
 
     fn prepare(
         components: &'w CM,
@@ -76,6 +82,7 @@ where
     CM: ComponentHandler<A>,
 {
     type View = View<'w, A>;
+    const INCLUDE_FILTER: u128 = <CM as ComponentHandler<A>>::MASK;
 
     fn prepare(
         components: &'w CM,
@@ -99,6 +106,7 @@ where
     CM: ComponentHandler<A>,
 {
     type View = View<'w, A>;
+    const INCLUDE_FILTER: u128 = 0;
 
     fn prepare(
         components: &'w CM,
@@ -113,6 +121,7 @@ where
 }
 impl<'w, CM> Fetch<'w, CM> for Entity {
     type View = ();
+    const INCLUDE_FILTER: u128 = 0;
 
     fn prepare(
         _components: &'w CM,
@@ -154,6 +163,7 @@ macro_rules! impl_single_tuple {
             $($T: Fetch<'w, CM>),+
         {
             type View = ($($T::View),+);
+            const INCLUDE_FILTER: u128 = ($($T::INCLUDE_FILTER)|+);
 
             fn prepare(
                 components: &'w CM,

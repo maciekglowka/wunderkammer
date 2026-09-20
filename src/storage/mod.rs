@@ -18,7 +18,7 @@ pub struct Storage<CM> {
     entities: EntityStorage,
     components: CM,
 }
-impl<CM: Default> Storage<CM> {
+impl<CM: ComponentSet + Default> Storage<CM> {
     pub fn new() -> Self {
         Self {
             entities: EntityStorage::default(),
@@ -28,11 +28,28 @@ impl<CM: Default> Storage<CM> {
     pub fn spawn(&mut self) -> Entity {
         self.entities.spawn()
     }
+    pub fn despawn(&mut self, entity: Entity) {
+        self.components.drop_all_components(&entity);
+        self.entities.despawn(entity);
+    }
     pub fn insert<T>(&mut self, entity: Entity, value: T)
     where
         CM: ComponentHandler<T>,
     {
-        self.components.storage_mut().insert(entity, value);
+        self.components.storage_mut().insert(&entity, value);
+        self.entities
+            .set_component_flag(&entity, <CM as ComponentHandler<T>>::MASK);
+    }
+    pub fn remove<T>(&mut self, entity: Entity) -> Option<T>
+    where
+        CM: ComponentHandler<T>,
+    {
+        if !self.entities.is_valid(&entity) {
+            return None;
+        }
+        self.entities
+            .clear_component_flag(&entity, <CM as ComponentHandler<T>>::MASK);
+        self.components.storage_mut().remove(&entity)
     }
     pub fn get<'a, T>(&'a self, entity: &Entity) -> Option<T>
     where
@@ -71,4 +88,8 @@ pub unsafe trait ComponentHandler<T> {
     fn storage(&self) -> &ComponentStorage<T>;
     fn storage_mut(&mut self) -> &mut ComponentStorage<T>;
     unsafe fn storage_raw(c: *mut Self) -> *mut ComponentStorage<T>;
+}
+
+pub trait ComponentSet {
+    fn drop_all_components(&mut self, entity: &Entity);
 }

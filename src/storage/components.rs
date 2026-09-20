@@ -26,9 +26,9 @@ impl<T> ComponentStorage<T> {
     // Overwrite if already exists.
     // Since it cannot validate the entity,
     // it is recommended to use `insert!` macro that calls it internally.
-    pub fn insert(&mut self, entity: Entity, value: T) {
+    pub fn insert(&mut self, entity: &Entity, value: T) {
         // check if replacement
-        if let Some(index) = get_dense_index(&self.sparse, &self.dense, &entity) {
+        if let Some(index) = get_dense_index(&self.sparse, &self.dense, entity) {
             self.values[index] = value;
             return;
         }
@@ -42,15 +42,15 @@ impl<T> ComponentStorage<T> {
         // sparse array points to the element in the dense one
         self.sparse[index] = self.dense.len() as IdSize;
         // we push the element at the end of the dense array
-        self.dense.push(entity);
+        self.dense.push(*entity);
         // components array is kept in sync with the dense array
         self.values.push(value);
     }
 
     // Removes component for a given entity
     // Keeps the values densely packed
-    pub fn remove(&mut self, entity: Entity) -> Option<T> {
-        let removed_idx = get_dense_index(&self.sparse, &self.dense, &entity)?;
+    pub fn remove(&mut self, entity: &Entity) -> Option<T> {
+        let removed_idx = get_dense_index(&self.sparse, &self.dense, entity)?;
 
         // we are going to swap the removed value with the last one first
         let last_idx = self.dense.len() - 1;

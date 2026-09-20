@@ -14,6 +14,7 @@ pub fn storage(_attr: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let mut component_fields = vec![];
+    let mut component_names = vec![];
     let mut handler_impls = vec![];
 
     for (i, ty) in component_types.iter().enumerate() {
@@ -22,6 +23,9 @@ pub fn storage(_attr: TokenStream, input: TokenStream) -> TokenStream {
 
         component_fields.push(quote! {
             pub #name: ComponentStorage<#ty>,
+        });
+        component_names.push(quote! {
+            #name
         });
         handler_impls.push(quote! {
             unsafe impl ComponentHandler<#ty> for Components {
@@ -62,6 +66,11 @@ pub fn storage(_attr: TokenStream, input: TokenStream) -> TokenStream {
             #serialize_stmt
             pub struct Components {
                 #(#component_fields)*
+            }
+            impl wunderkammer::storage::ComponentSet for Components {
+                fn drop_all_components(&mut self, entity: &wunderkammer::Entity) {
+                    let _ = #(self.#component_names.remove(entity);)*
+                }
             }
 
             #(#handler_impls)*
