@@ -68,7 +68,7 @@ pub fn storage(_attr: TokenStream, input: TokenStream) -> TokenStream {
                 #(#component_fields)*
             }
             impl wunderkammer::storage::ComponentSet for Components {
-                fn drop_all_components(&mut self, entity: &wunderkammer::Entity) {
+                fn drop_all_components(&mut self, entity: &wunderkammer::storage::Entity) {
                     let _ = #(self.#component_names.remove(entity);)*
                 }
             }

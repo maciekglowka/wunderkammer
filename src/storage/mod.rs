@@ -32,8 +32,8 @@ impl<CM: ComponentSet + Default> Storage<CM> {
         self.components.drop_all_components(&entity);
         self.entities.despawn(entity);
     }
-    pub fn is_valid(&self, entity: Entity) -> bool {
-        self.entities.is_valid(&entity)
+    pub fn is_valid(&self, entity: &Entity) -> bool {
+        self.entities.is_valid(entity)
     }
     pub fn insert<T>(&mut self, entity: Entity, value: T)
     where
