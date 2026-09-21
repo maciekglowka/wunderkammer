@@ -9,9 +9,6 @@ pub mod storage;
 #[cfg(feature = "storage")]
 pub use wunderkammer_derive::storage;
 
-#[cfg(feature = "storage")]
-pub use storage::Entity;
-
 pub mod prelude {
     use super::*;
 
@@ -20,4 +17,7 @@ pub mod prelude {
 
     #[cfg(feature = "storage")]
     pub use wunderkammer_derive::storage;
+
+    #[cfg(feature = "storage")]
+    pub use storage::Entity;
 }
