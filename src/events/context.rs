@@ -1,6 +1,6 @@
-use super::markers::{Mut, Ref};
+use std::marker::PhantomData;
 
-pub trait Context<M = Mut> {
+pub trait Context {
     type Borrow<'a>
     where
         Self: 'a;
@@ -10,9 +10,10 @@ pub trait Context<M = Mut> {
         'a: 'b;
 }
 
-impl<C> Context for C {
+pub struct Ref<T>(PhantomData<fn(&T)>);
+impl<T> Context for Ref<T> {
     type Borrow<'a>
-        = &'a mut C
+        = &'a T
     where
         Self: 'a;
 
@@ -20,12 +21,14 @@ impl<C> Context for C {
     where
         'a: 'b,
     {
-        &mut **cx
+        cx
     }
 }
-impl<C> Context<Ref> for C {
+
+pub struct Mut<T>(PhantomData<fn(&mut T)>);
+impl<T> Context for Mut<T> {
     type Borrow<'a>
-        = &'a C
+        = &'a mut T
     where
         Self: 'a;
 
@@ -33,49 +36,42 @@ impl<C> Context<Ref> for C {
     where
         'a: 'b,
     {
-        &**cx
+        cx
     }
 }
 
-macro_rules! ref_type {
-    (Ref $generic:ident) => { &'a $generic };
-    (Mut $generic:ident) => { &'a mut $generic };
-}
-macro_rules! borrow_type {
-    (Ref $cx:ident $idx:tt) => {
-        &*$cx.$idx
-    };
-    (Mut $cx:ident $idx:tt) => {
-        &mut *$cx.$idx
-    };
-}
+macro_rules! impl_single_tuple {
+    ($($T:ident),+) => {
+        impl<$($T),+> Context for ($($T),+)
+        where
+            $($T: Context),+
 
-macro_rules! impl_context_tuple_inner {
-    ([$($idx:tt), +][$($generic:ident),+][$($marker:ident),+]) => {
-        impl<$($generic),+> Context<($($marker),+)> for ($($generic),+) {
-            type Borrow<'a>
-                = ($(ref_type!($marker $generic)), +)
+        {
+            type Borrow<'a> = ($($T::Borrow<'a>),+)
             where
                 Self: 'a;
 
-
+            #[allow(non_snake_case)]
             fn borrow<'b, 'a>(cx: &'b mut Self::Borrow<'a>) -> Self::Borrow<'b>
             where
                 'a: 'b,
             {
-                ($(borrow_type!($marker cx $idx)), +)
+                let ($($T,)+) = cx;
+                ($($T::borrow($T),)+)
             }
         }
+
     }
 }
 
-macro_rules! impl_context_tuple {
-    ([$A:ident, $B:ident]) => { impl_context_tuple_inner!([0, 1][A, B][$A, $B]); };
-    ([$A:ident, $B:ident, $C:ident]) => { impl_context_tuple_inner!([0, 1, 2][A, B, C][$A, $B, $C]); };
+macro_rules! impl_tuples {
+    ($a:ident, $b:ident) => {
+        impl_single_tuple!($a, $b);
+    };
+    ($a:ident, $($rest:ident),+) => {
+        impl_single_tuple!($a, $($rest), +);
+        impl_tuples!($($rest),+);
+    };
 }
 
-impl_context_tuple!([Mut, Mut]);
-impl_context_tuple!([Mut, Ref]);
-impl_context_tuple!([Mut, Mut, Mut]);
-impl_context_tuple!([Mut, Mut, Ref]);
-impl_context_tuple!([Mut, Ref, Ref]);
+impl_tuples!(A, B, C, D, E, F);

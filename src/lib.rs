@@ -13,7 +13,7 @@ pub mod prelude {
     use super::*;
 
     #[cfg(feature = "events")]
-    pub use events::{BusHandle, EventDispatcher, EventSender, HandlerResult};
+    pub use events::{BusHandle, EventDispatcher, EventSender, Mut, Ref};
 
     #[cfg(feature = "storage")]
     pub use wunderkammer_derive::storage;
